@@ -1,0 +1,8 @@
+fastapi
+httpx
+python-dotenv
+pydantic
+pydantic[email]
+pydantic_settings
+python-multipart
+resend
