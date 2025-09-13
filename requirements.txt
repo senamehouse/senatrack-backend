@@ -1,8 +1,21 @@
 fastapi
-httpx
+aiofiles
+aiohttp
+asyncio
 python-dotenv
 pydantic
 pydantic[email]
 pydantic_settings
 python-multipart
 resend
+# Database
+sqlalchemy[asyncio]
+aiosqlite
+# Authentication
+passlib[bcrypt]
+python-jose
+argon2-cffi
+# Network
+uvicorn[standard]
+# Executable
+pyinstaller
