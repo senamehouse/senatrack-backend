@@ -1,10 +1,12 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import Optional
 from app.services.auth import AuthService
 from app.schemas.user import User
 
 # Security scheme
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
 
 # Auth service instance
 auth_service = AuthService()
@@ -32,8 +34,10 @@ async def get_current_verified_user(current_user: User = Depends(get_current_act
     return current_user
 
 # Optional authentication (doesn't raise error if no token)
-async def get_current_user_optional(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User | None:
+async def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security)) -> User | None:
     """Optional dependency to get current user (returns None if not authenticated)"""
+    if not credentials:
+        return None
     try:
         return await auth_service.get_current_user(credentials.credentials)
     except HTTPException:

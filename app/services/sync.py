@@ -1,8 +1,15 @@
 import asyncio
+import json
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from app.core.database import get_database
+from sqlalchemy import select, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.database import AsyncSessionLocal
+from app.models.sync import SyncLog
+from app.models.user import User as UserModel
+from app.models.auth import RefreshToken
+from app.services.user import UserService
 
 logger = logging.getLogger(__name__)
 
@@ -10,14 +17,68 @@ class SyncService:
     """Service for synchronizing data between local and server SQLite databases"""
     
     def __init__(self):
-        self.db = None
+        self.user_service = UserService()
         self.sync_in_progress = False
     
-    async def _get_db(self):
-        """Get async database instance"""
-        if self.db is None:
-            self.db = await get_database()
-        return self.db
+    async def get_unsynced_changes(self) -> List[Dict[str, Any]]:
+        """Get all unsynced changes"""
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(SyncLog).where(SyncLog.synced == False)
+                )
+                sync_logs = result.scalars().all()
+                
+                changes = []
+                for log in sync_logs:
+                    change = {
+                        'id': log.id,
+                        'operation': log.operation,
+                        'record_id': log.record_id,
+                        'table_name': log.table_name,
+                        'data': json.loads(log.data) if log.data else {}
+                    }
+                    # Add user fields for easier processing
+                    if log.data:
+                        user_data = json.loads(log.data)
+                        change.update({
+                            'name': user_data.get('name'),
+                            'email': user_data.get('email'),
+                            'phone_number': user_data.get('phone_number')
+                        })
+                    changes.append(change)
+                return changes
+        except Exception as e:
+            logger.error(f"Error getting unsynced changes: {str(e)}")
+            return []
+    
+    async def mark_sync_log_as_synced(self, log_id: int):
+        """Mark a sync log entry as synced"""
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(SyncLog).where(SyncLog.id == log_id)
+                )
+                sync_log = result.scalar_one_or_none()
+                
+                if sync_log:
+                    sync_log.synced = True
+                    sync_log.synced_at = datetime.now()
+                    await session.commit()
+        except Exception as e:
+            logger.error(f"Error marking sync log as synced: {str(e)}")
+    
+    async def clear_all_data(self):
+        """Clear all data from database"""
+        try:
+            async with AsyncSessionLocal() as session:
+                await session.execute(delete(UserModel))
+                await session.execute(delete(RefreshToken))
+                await session.execute(delete(SyncLog))
+                await session.commit()
+        except Exception as e:
+            logger.error(f"Error clearing all data: {str(e)}")
+            raise
     
     async def sync_to_server(self) -> Dict[str, Any]:
         """
@@ -39,8 +100,7 @@ class SyncService:
         
         try:
             # Get unsynced changes from local database
-            db = await self._get_db()
-            unsynced_changes = await db.get_unsynced_changes()
+            unsynced_changes = await self.get_unsynced_changes()
             
             if not unsynced_changes:
                 results["message"] = "No changes to sync"
@@ -55,7 +115,7 @@ class SyncService:
                             'email': change['email'],
                             'phone_number': change['phone_number']
                         }
-                        await db.create_user(user_data)
+                        await self.user_service.create_user(user_data)
                         
                     elif change['operation'] == 'UPDATE':
                         user_data = {
@@ -63,13 +123,13 @@ class SyncService:
                             'email': change['email'],
                             'phone_number': change['phone_number']
                         }
-                        await db.update_user(change['record_id'], user_data)
+                        await self.user_service.update_user(change['record_id'], user_data)
                         
                     elif change['operation'] == 'DELETE':
-                        await db.delete_user(change['record_id'])
+                        await self.user_service.delete_user(change['record_id'])
                     
                     # Mark as synced in local database
-                    await self._mark_as_synced(change['id'])
+                    await self.mark_sync_log_as_synced(change['id'])
                     results["synced_records"] += 1
                     
                 except Exception as e:
@@ -109,15 +169,14 @@ class SyncService:
         
         try:
             # Get all data from server database
-            db = await self._get_db()
-            server_data = await db.export_data()
+            server_data = await self.user_service.export_data()
             
             if not server_data:
                 results["message"] = "No data to sync from server"
                 return results
             
             # Sync to local database
-            success = await db.sync_data(server_data)
+            success = await self.user_service.sync_data(server_data)
             
             if success:
                 results["synced_records"] = len(server_data)
@@ -171,17 +230,11 @@ class SyncService:
         
         return results
     
-    async def _mark_as_synced(self, log_id: int):
-        """Mark a sync log entry as synced"""
-        db = await self._get_db()
-        await db.mark_sync_log_as_synced(log_id)
-    
     async def get_sync_status(self) -> Dict[str, Any]:
         """Get current sync status"""
         try:
-            db = await self._get_db()
-            unsynced_changes = await db.get_unsynced_changes()
-            local_count = await db.get_users_count()
+            unsynced_changes = await self.get_unsynced_changes()
+            local_count = await self.user_service.get_users_count()
             
             return {
                 "status": "success",
@@ -211,12 +264,11 @@ class SyncService:
         
         try:
             # Get all data from server
-            db = await self._get_db()
-            server_data = await db.export_data()
+            server_data = await self.user_service.export_data()
             
             # Clear local database and sync all data
-            await db.clear_all_data()
-            success = await db.sync_data(server_data)
+            await self.clear_all_data()
+            success = await self.user_service.sync_data(server_data)
             
             if success:
                 results["synced_records"] = len(server_data)

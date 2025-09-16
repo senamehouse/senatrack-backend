@@ -1,18 +1,18 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
-from app.schemas.user import User, UserProfile, UserUpdate
+from app.schemas.user import User, UserUpdate
 from app.services.user import UserService
 from app.core.dependencies import get_current_user, get_current_active_user
 
 router = APIRouter(prefix="/users", tags=["Users"])
 user_service = UserService()
 
-@router.get("/", response_model=List[UserProfile])
+@router.get("/", response_model=List[User])
 async def get_all_users(current_user: User = Depends(get_current_active_user)):
     """Get all users (requires authentication)"""
     return await user_service.get_all_users()
 
-@router.get("/{user_id}", response_model=UserProfile)
+@router.get("/{user_id}", response_model=User)
 async def get_user(
     user_id: int, 
     current_user: User = Depends(get_current_active_user)
@@ -29,7 +29,7 @@ async def get_users_count(current_user: User = Depends(get_current_active_user))
     count = await user_service.get_users_count()
     return {"count": count}
 
-@router.put("/{user_id}", response_model=UserProfile)
+@router.put("/{user_id}", response_model=User)
 async def update_user(
     user_id: int,
     user_data: UserUpdate,

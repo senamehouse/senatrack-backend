@@ -7,7 +7,12 @@ class UserBase(BaseModel):
     """Base user schema with common fields"""
     name: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
-    phone_number: Optional[str] = Field(None, max_length=20)
+    phone_number: Optional[str] = Field(None, max_length=20, alias="phoneNumber")
+    
+    class Config:
+        populate_by_name = True
+        from_attributes = True
+        serialize_by_alias = True
 
 class UserCreate(UserBase):
     """Schema for creating a user"""
@@ -16,20 +21,25 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     """Schema for updating user profile"""
     name: Optional[str] = Field(None, min_length=2, max_length=100)
-    phone_number: Optional[str] = Field(None, max_length=20)
+    phone_number: Optional[str] = Field(None, max_length=20, alias="phoneNumber")
+    
+    class Config:
+        populate_by_name = True
+        from_attributes = True
+        serialize_by_alias = True
 
-class UserProfile(UserBase):
-    """Schema for user profile (public info)"""
+class User(UserBase):
+    """Schema for user (public info)"""
     id: int
-    is_active: bool
-    is_verified: bool
-    created_at: datetime
-    updated_at: Optional[datetime]
-    last_login: Optional[datetime]
+    is_active: bool = Field(..., alias="isActive")
+    is_verified: bool = Field(..., alias="isVerified")
+    created_at: datetime = Field(..., alias="createdAt")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+    last_login: Optional[datetime] = Field(None, alias="lastLogin")
 
-class User(UserProfile):
-    """Complete user schema (for internal use)"""
-    pass
+class UserInternal(User):
+    """Internal user schema with sensitive fields"""
+    hashed_password: str = Field(..., alias="hashedPassword")
 
 # Authentication-specific schemas
 class UserRegister(UserBase):
@@ -43,8 +53,13 @@ class UserLogin(BaseModel):
 
 class PasswordChange(BaseModel):
     """Schema for password change"""
-    current_password: str = Field(..., description="Current password")
-    new_password: str = Field(..., min_length=8, max_length=100, description="New password (min 8 characters)")
+    current_password: str = Field(..., description="Current password", alias="currentPassword")
+    new_password: str = Field(..., min_length=8, max_length=100, description="New password (min 8 characters)", alias="newPassword")
+    
+    class Config:
+        populate_by_name = True
+        from_attributes = True
+        serialize_by_alias = True
 
 class PasswordReset(BaseModel):
     """Schema for password reset request"""
@@ -53,5 +68,10 @@ class PasswordReset(BaseModel):
 class PasswordResetConfirm(BaseModel):
     """Schema for password reset confirmation"""
     token: str = Field(..., description="Reset token")
-    new_password: str = Field(..., min_length=8, max_length=100, description="New password (min 8 characters)")
+    new_password: str = Field(..., min_length=8, max_length=100, description="New password (min 8 characters)", alias="newPassword")
+    
+    class Config:
+        populate_by_name = True
+        from_attributes = True
+        serialize_by_alias = True
 

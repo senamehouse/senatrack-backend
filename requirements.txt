@@ -12,7 +12,8 @@ resend
 sqlalchemy[asyncio]
 aiosqlite
 # Authentication
-passlib[bcrypt]
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 python-jose
 argon2-cffi
 # Network
