@@ -1,0 +1,224 @@
+from typing import List, Optional
+from datetime import datetime
+from fastapi import HTTPException
+from sqlalchemy import select
+from app.core.database import get_sessionmaker
+from app.models.stock_movement_model import StockMovement as StockMovementModel, StockMovementItem as StockMovementItemModel
+from app.schemas.stock_movement_schema import StockMovement as StockMovementSchema, StockMovementCreate, StockMovementUpdate, StockMovementItemCreate
+
+
+class StockMovementService:
+    async def get_all(self, company_id: str) -> List[StockMovementSchema]:
+        try:
+            Session = get_sessionmaker()
+            async with Session() as session:
+                result = await session.execute(
+                    select(StockMovementModel).where(StockMovementModel.company_id == company_id)
+                )
+                movements = result.scalars().all()
+                return [StockMovementSchema(**m.to_dict()) for m in movements]
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error retrieving stock movements: {str(e)}")
+
+    async def get_by_id(self, movement_id: int, company_id: str) -> Optional[StockMovementSchema]:
+        try:
+            Session = get_sessionmaker()
+            async with Session() as session:
+                result = await session.execute(
+                    select(StockMovementModel).where(
+                        StockMovementModel.id == movement_id,
+                        StockMovementModel.company_id == company_id,
+                    )
+                )
+                movement = result.scalar_one_or_none()
+                return StockMovementSchema(**movement.to_dict()) if movement else None
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error retrieving stock movement: {str(e)}")
+
+    async def create(self, company_id: str, payload: StockMovementCreate) -> int:
+        try:
+            Session = get_sessionmaker()
+            async with Session() as session:
+                movement = StockMovementModel(
+                    company_id=company_id,
+                    date=payload.date,
+                    movement_type=payload.movement_type.value,
+                    label=payload.label,
+                    supplier_id=payload.supplier_id,
+                    customer_id=payload.customer_id,
+                    reason=payload.reason,
+                    author=payload.author,
+                    details=payload.details,
+                    document_reference=payload.document_reference,
+                    total_value=payload.total_value,
+                )
+                session.add(movement)
+                await session.commit()
+                await session.refresh(movement)
+
+                # items
+                for item in payload.items:
+                    session.add(StockMovementItemModel(
+                        stock_movement_id=movement.id,
+                        product_id=item.product_id,
+                        product_name=item.product_name,
+                        quantity=item.quantity,
+                        unit_price=item.unit_price,
+                        total=item.total,
+                        unit=item.unit,
+                    ))
+                await session.commit()
+                return movement.id
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error creating stock movement: {str(e)}")
+
+    async def update(self, movement_id: int, company_id: str, payload: StockMovementUpdate) -> bool:
+        try:
+            Session = get_sessionmaker()
+            async with Session() as session:
+                result = await session.execute(
+                    select(StockMovementModel).where(
+                        StockMovementModel.id == movement_id,
+                        StockMovementModel.company_id == company_id,
+                    )
+                )
+                movement = result.scalar_one_or_none()
+                if not movement:
+                    return False
+                if payload.date is not None:
+                    movement.date = payload.date
+                if payload.movement_type is not None:
+                    movement.movement_type = payload.movement_type.value
+                if payload.label is not None:
+                    movement.label = payload.label
+                if payload.supplier_id is not None:
+                    movement.supplier_id = payload.supplier_id
+                if payload.customer_id is not None:
+                    movement.customer_id = payload.customer_id
+                if payload.reason is not None:
+                    movement.reason = payload.reason
+                if payload.author is not None:
+                    movement.author = payload.author
+                if payload.details is not None:
+                    movement.details = payload.details
+                if payload.document_reference is not None:
+                    movement.document_reference = payload.document_reference
+                if payload.total_value is not None:
+                    movement.total_value = payload.total_value
+                movement.updated_at = datetime.now()
+                await session.commit()
+                return True
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error updating stock movement: {str(e)}")
+
+    async def delete(self, movement_id: int, company_id: str) -> bool:
+        try:
+            Session = get_sessionmaker()
+            async with Session() as session:
+                result = await session.execute(
+                    select(StockMovementModel).where(
+                        StockMovementModel.id == movement_id,
+                        StockMovementModel.company_id == company_id,
+                    )
+                )
+                movement = result.scalar_one_or_none()
+                if not movement:
+                    return False
+                # simple delete of parent and orphan items by FK if configured; here manual delete is not necessary if FK cascade not set
+                await session.delete(movement)
+                await session.commit()
+                return True
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error deleting stock movement: {str(e)}")
+
+    async def get_product_stock(self, product_id: int, company_id: str) -> int:
+        """Get current stock for a product"""
+        try:
+            Session = get_sessionmaker()
+            async with Session() as session:
+                # Get the product's current stock
+                from app.models.product_model import Product as ProductModel
+                result = await session.execute(
+                    select(ProductModel.stock).where(
+                        ProductModel.id == product_id,
+                        ProductModel.company_id == company_id
+                    )
+                )
+                stock = result.scalar_one_or_none()
+                return stock or 0
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error getting product stock: {str(e)}")
+
+    async def get_movements_by_sale_id(self, sale_id: int, company_id: str) -> List[StockMovementSchema]:
+        """Get stock movements by sale ID"""
+        try:
+            Session = get_sessionmaker()
+            async with Session() as session:
+                # First get the sale to get its reference
+                from app.models.sales_model import Sale as SaleModel
+                sale_result = await session.execute(
+                    select(SaleModel.reference).where(
+                        SaleModel.id == sale_id,
+                        SaleModel.company_id == company_id
+                    )
+                )
+                sale_reference = sale_result.scalar_one_or_none()
+                if not sale_reference:
+                    return []
+                
+                # Get movements by sale reference
+                result = await session.execute(
+                    select(StockMovementModel).where(
+                        StockMovementModel.company_id == company_id,
+                        StockMovementModel.document_reference == sale_reference
+                    )
+                )
+                movements = result.scalars().all()
+                return [StockMovementSchema(**m.to_dict()) for m in movements]
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error retrieving stock movements by sale ID: {str(e)}")
+
+    async def get_stock_summary(self, company_id: str) -> dict:
+        """Get stock summary statistics"""
+        try:
+            Session = get_sessionmaker()
+            async with Session() as session:
+                from app.models.product_model import Product as ProductModel
+                from sqlalchemy import func
+                
+                # Get total products
+                total_result = await session.execute(
+                    select(func.count(ProductModel.id)).where(ProductModel.company_id == company_id)
+                )
+                total_products = total_result.scalar() or 0
+                
+                # Get low stock products
+                low_stock_result = await session.execute(
+                    select(func.count(ProductModel.id)).where(
+                        ProductModel.company_id == company_id,
+                        ProductModel.stock <= ProductModel.stock_alert_threshold,
+                        ProductModel.stock > 0
+                    )
+                )
+                low_stock = low_stock_result.scalar() or 0
+                
+                # Get out of stock products
+                out_of_stock_result = await session.execute(
+                    select(func.count(ProductModel.id)).where(
+                        ProductModel.company_id == company_id,
+                        ProductModel.stock == 0
+                    )
+                )
+                out_of_stock = out_of_stock_result.scalar() or 0
+                
+                return {
+                    "totalProducts": total_products,
+                    "lowStock": low_stock,
+                    "outOfStock": out_of_stock
+                }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error getting real stock stats: {str(e)}")
+
+
+
+

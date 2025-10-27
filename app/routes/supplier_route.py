@@ -1,0 +1,50 @@
+from fastapi import APIRouter, Depends, HTTPException
+from typing import List
+from app.core.dependencies import get_current_user, get_company_id
+from app.schemas.user_schema import User
+from app.schemas.supplier_schema import Supplier, SupplierCreate, SupplierUpdate
+from app.services.supplier_service import SupplierService
+
+
+router = APIRouter(prefix="/suppliers", tags=["Suppliers"])
+service = SupplierService()
+
+
+@router.get("/", response_model=List[Supplier])
+async def get_suppliers(current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    return await service.get_all_suppliers(company_id)
+
+
+@router.get("/{supplier_id}", response_model=Supplier)
+async def get_supplier(supplier_id: int, current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    supplier = await service.get_supplier_by_id(supplier_id, company_id)
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    return supplier
+
+
+@router.post("/", response_model=dict)
+async def create_supplier(payload: SupplierCreate, current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    supplier_id = await service.create_supplier(company_id, payload)
+    return {"message": "Supplier created", "supplier_id": supplier_id}
+
+
+@router.put("/{supplier_id}", response_model=dict)
+async def update_supplier(supplier_id: int, payload: SupplierUpdate, current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    ok = await service.update_supplier(supplier_id, company_id, payload)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    return {"message": "Supplier updated"}
+
+
+@router.delete("/{supplier_id}", response_model=dict)
+async def delete_supplier(supplier_id: int, current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    ok = await service.delete_supplier(supplier_id, company_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    return {"message": "Supplier deleted"}
+
+@router.get("/next-code", response_model=dict)
+async def next_supplier_code(current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    code = await service.generate_supplier_code(company_id)
+    return {"supplierCode": code}

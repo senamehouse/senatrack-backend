@@ -1,0 +1,75 @@
+from fastapi import APIRouter, Depends, HTTPException
+from typing import List
+from app.core.dependencies import get_current_user, get_company_id
+from app.schemas.user_schema import User
+from app.schemas.stock_movement_schema import StockMovement as StockMovementSchema, StockMovementCreate, StockMovementUpdate
+from app.services.stock_movement_service import StockMovementService
+
+
+router = APIRouter(prefix="/stock-movements", tags=["Stock Movements"])
+svc = StockMovementService()
+
+
+@router.get("/", response_model=List[StockMovementSchema])
+async def get_movements(
+    current_user: User = Depends(get_current_user), 
+    company_id: str = Depends(get_company_id)
+):
+    """Get all stock movements for the company"""
+    return await svc.get_all(company_id)
+
+
+@router.get("/summary")
+async def get_stock_summary(current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    """Get stock summary statistics"""
+    summary = await svc.get_stock_summary(company_id)
+    return summary
+
+
+@router.get("/{movement_id}", response_model=StockMovementSchema)
+async def get_movement(movement_id: str, current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    mv = await svc.get_by_id(movement_id, company_id)
+    if not mv:
+        raise HTTPException(status_code=404, detail="Stock movement not found")
+    return mv
+
+
+@router.post("/", response_model=dict)
+async def create_movement(payload: StockMovementCreate, current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    movement_id = await svc.create(company_id, payload)
+    return {"message": "Stock movement created", "movement_id": movement_id}
+
+
+@router.put("/{movement_id}", response_model=dict)
+async def update_movement(movement_id: str, payload: StockMovementUpdate, current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    ok = await svc.update(movement_id, company_id, payload)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Stock movement not found")
+    return {"message": "Stock movement updated"}
+
+
+@router.delete("/{movement_id}", response_model=dict)
+async def delete_movement(movement_id: str, current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    ok = await svc.delete(movement_id, company_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Stock movement not found")
+    return {"message": "Stock movement deleted"}
+
+
+@router.get("/product/{product_id}/stock")
+async def get_product_stock(product_id: str, current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    """Get current stock quantity for a product"""
+    stock = await svc.get_product_stock(product_id, company_id)
+    return {"stock": stock}
+
+
+@router.get("/by-sale/{sale_id}")
+async def get_movements_by_sale(sale_id: str, current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    """Get stock movements by sale ID"""
+    movements = await svc.get_movements_by_sale_id(sale_id, company_id)
+    return movements
+
+
+ 
+
+

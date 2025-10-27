@@ -1,0 +1,49 @@
+from fastapi import APIRouter, Depends, HTTPException
+from typing import List
+from app.core.dependencies import get_current_user, get_company_id
+from app.schemas.user_schema import User
+from app.schemas.client_schema import Client, ClientCreate, ClientUpdate
+from app.services.client_service import ClientService
+
+
+router = APIRouter(prefix="/clients", tags=["Clients"])
+service = ClientService()
+
+
+@router.get("/", response_model=List[Client])
+async def get_clients(current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    return await service.get_all_clients(company_id)
+
+
+@router.get("/{client_id}", response_model=Client)
+async def get_client(client_id: int, current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    client = await service.get_client_by_id(client_id, company_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return client
+
+
+@router.post("/", response_model=dict)
+async def create_client(payload: ClientCreate, current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    client_id = await service.create_client(company_id, payload)
+    return {"message": "Client created", "client_id": client_id}
+
+
+@router.put("/{client_id}", response_model=dict)
+async def update_client(client_id: int, payload: ClientUpdate, current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    ok = await service.update_client(client_id, company_id, payload)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return {"message": "Client updated"}
+
+
+@router.delete("/{client_id}", response_model=dict)
+async def delete_client(client_id: int, current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+    ok = await service.delete_client(client_id, company_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return {"message": "Client deleted"}
+
+
+
+

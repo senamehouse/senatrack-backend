@@ -11,11 +11,15 @@ resend
 # Database
 sqlalchemy[asyncio]
 aiosqlite
+asyncpg
 # Authentication
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-jose
 argon2-cffi
+# AWS
+aioboto3
+boto3
 # Network
 uvicorn[standard]
 # Executable
