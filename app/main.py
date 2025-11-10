@@ -40,10 +40,19 @@ app = FastAPI(
     version=settings.PROJECT_VERSION,
 )
 
+# Configure CORS
+# When credentials are included, we cannot use wildcard "*" for origins
+# We must specify the exact origins
+allowed_origins = [
+    "https://gestion.senatrack.app",
+    "http://localhost:4000",  # Local development
+    "http://localhost:4001",  # Alternative local port
+]
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
