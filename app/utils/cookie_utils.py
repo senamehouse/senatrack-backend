@@ -26,10 +26,16 @@ def set_auth_cookies(
         # This is a best-effort check
         logger.warning("No request object provided, defaulting to secure=False for cookies")
     
+    # For cross-domain cookies (frontend and backend on different domains),
+    # we need samesite="none" with secure=True
+    # For same-domain cookies, we can use samesite="lax"
+    # Since we're on different domains in production, use "none"
+    samesite_value = "none" if is_production else "lax"
+    
     max_age_session = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     max_age_refresh = settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     
-    logger.info(f"Setting auth cookies - secure: {is_production}, session_max_age: {max_age_session}, refresh_max_age: {max_age_refresh}")
+    logger.info(f"Setting auth cookies - secure: {is_production}, samesite: {samesite_value}, session_max_age: {max_age_session}, refresh_max_age: {max_age_refresh}")
     
     # Set session cookie
     response.set_cookie(
@@ -38,10 +44,10 @@ def set_auth_cookies(
         max_age=max_age_session,
         httponly=True,
         secure=is_production,
-        samesite="lax",
+        samesite=samesite_value,
         path="/"
     )
-    logger.debug(f"Set session cookie - httponly: True, secure: {is_production}, samesite: lax")
+    logger.debug(f"Set session cookie - httponly: True, secure: {is_production}, samesite: {samesite_value}")
     
     # Set refresh token cookie
     response.set_cookie(
@@ -50,10 +56,10 @@ def set_auth_cookies(
         max_age=max_age_refresh,
         httponly=True,
         secure=is_production,
-        samesite="lax",
+        samesite=samesite_value,
         path="/"
     )
-    logger.debug(f"Set refreshToken cookie - httponly: True, secure: {is_production}, samesite: lax")
+    logger.debug(f"Set refreshToken cookie - httponly: True, secure: {is_production}, samesite: {samesite_value}")
     
     # Set companyId cookie if provided
     if company_id:
@@ -63,10 +69,10 @@ def set_auth_cookies(
             max_age=365 * 24 * 60 * 60,  # 1 year
             httponly=True,
             secure=is_production,
-            samesite="lax",
+            samesite=samesite_value,
             path="/"
         )
-        logger.debug(f"Set companyId cookie - value: {company_id}, secure: {is_production}")
+        logger.debug(f"Set companyId cookie - value: {company_id}, secure: {is_production}, samesite: {samesite_value}")
     else:
         logger.debug("No companyId provided, skipping companyId cookie")
 
