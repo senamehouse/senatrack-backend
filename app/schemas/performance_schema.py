@@ -1,11 +1,10 @@
-from pydantic import BaseModel, Field
+from app.utils.casing import BaseCamelModel
+from pydantic import Field
 from datetime import datetime
 from typing import Optional
-from . import SCHEMA_CONFIG
 
 
-class PerformanceReviewBase(BaseModel):
-    model_config = SCHEMA_CONFIG
+class PerformanceReviewBase(BaseCamelModel):
 
     employee_id: str = Field(..., alias="employeeId")
     reviewer_id: str = Field(..., alias="reviewerId")
@@ -17,16 +16,13 @@ class PerformanceReviewCreate(PerformanceReviewBase):
     pass
 
 
-class PerformanceReviewUpdate(BaseModel):
-    model_config = SCHEMA_CONFIG
+class PerformanceReviewUpdate(BaseCamelModel):
 
     status: Optional[str] = None
     overall_rating: Optional[float] = Field(None, ge=0, le=5, alias="overallRating")
 
 
 class PerformanceReview(PerformanceReviewBase):
-    model_config = SCHEMA_CONFIG
-
     id: str
     company_id: Optional[str] = Field(None, alias="companyId")
     created_at: datetime = Field(..., alias="createdAt")

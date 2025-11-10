@@ -1,11 +1,10 @@
-from pydantic import BaseModel, Field
+from app.utils.casing import BaseCamelModel
+from pydantic import Field
 from datetime import datetime
 from typing import Optional
-from . import SCHEMA_CONFIG
 
 
-class SupplierBase(BaseModel):
-    model_config = SCHEMA_CONFIG
+class SupplierBase(BaseCamelModel):
 
     name: str = Field(..., min_length=1, max_length=255)
     email: Optional[str] = Field(None, max_length=255)
@@ -17,8 +16,7 @@ class SupplierCreate(SupplierBase):
     pass
 
 
-class SupplierUpdate(BaseModel):
-    model_config = SCHEMA_CONFIG
+class SupplierUpdate(BaseCamelModel):
 
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     email: Optional[str] = Field(None, max_length=255)
@@ -28,8 +26,6 @@ class SupplierUpdate(BaseModel):
 
 
 class Supplier(SupplierBase):
-    model_config = SCHEMA_CONFIG
-
     id: str
     company_id: Optional[str] = Field(None, alias="companyId")
     is_active: bool = Field(..., alias="isActive")

@@ -1,11 +1,10 @@
-from pydantic import BaseModel, Field
+from app.utils.casing import BaseCamelModel
+from pydantic import Field
 from datetime import datetime
 from typing import Optional
-from . import SCHEMA_CONFIG
 
 
-class LeaveRequestBase(BaseModel):
-    model_config = SCHEMA_CONFIG
+class LeaveRequestBase(BaseCamelModel):
 
     employee_id: str = Field(..., alias="employeeId")
     leave_type: str = Field(..., alias="leaveType")
@@ -22,8 +21,7 @@ class LeaveRequestCreate(LeaveRequestBase):
     pass
 
 
-class LeaveRequestUpdate(BaseModel):
-    model_config = SCHEMA_CONFIG
+class LeaveRequestUpdate(BaseCamelModel):
 
     leave_type: Optional[str] = Field(None, alias="leaveType")
     status: Optional[str] = None
@@ -36,8 +34,6 @@ class LeaveRequestUpdate(BaseModel):
 
 
 class LeaveRequest(LeaveRequestBase):
-    model_config = SCHEMA_CONFIG
-
     id: str
     company_id: Optional[str] = Field(None, alias="companyId")
     created_at: datetime = Field(..., alias="createdAt")

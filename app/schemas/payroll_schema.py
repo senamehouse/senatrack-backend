@@ -1,11 +1,10 @@
-from pydantic import BaseModel, Field
+from app.utils.casing import BaseCamelModel
+from pydantic import Field
 from datetime import datetime
 from typing import Optional
-from . import SCHEMA_CONFIG
 
 
-class PayrollBase(BaseModel):
-    model_config = SCHEMA_CONFIG
+class PayrollBase(BaseCamelModel):
 
     employee_id: str = Field(..., alias="employeeId")
     period_year: int = Field(..., ge=2000, le=9999, alias="periodYear")
@@ -20,8 +19,7 @@ class PayrollCreate(PayrollBase):
     pass
 
 
-class PayrollUpdate(BaseModel):
-    model_config = SCHEMA_CONFIG
+class PayrollUpdate(BaseCamelModel):
 
     period_year: Optional[int] = Field(None, ge=2000, le=9999, alias="periodYear")
     period_month: Optional[int] = Field(None, ge=1, le=12, alias="periodMonth")
@@ -32,8 +30,6 @@ class PayrollUpdate(BaseModel):
 
 
 class Payroll(PayrollBase):
-    model_config = SCHEMA_CONFIG
-
     id: str
     company_id: Optional[str] = Field(None, alias="companyId")
     created_at: datetime = Field(..., alias="createdAt")

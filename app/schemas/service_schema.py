@@ -1,11 +1,10 @@
-from pydantic import BaseModel, Field
+from app.utils.casing import BaseCamelModel
+from pydantic import Field
 from datetime import datetime
 from typing import Optional
-from . import SCHEMA_CONFIG
 
 
-class ServiceBase(BaseModel):
-    model_config = SCHEMA_CONFIG
+class ServiceBase(BaseCamelModel):
 
     name: str = Field(..., min_length=1, max_length=255)
     unit: str = Field(..., min_length=1, max_length=50)
@@ -17,8 +16,7 @@ class ServiceCreate(ServiceBase):
     pass
 
 
-class ServiceUpdate(BaseModel):
-    model_config = SCHEMA_CONFIG
+class ServiceUpdate(BaseCamelModel):
 
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     unit: Optional[str] = Field(None, min_length=1, max_length=50)
@@ -28,8 +26,6 @@ class ServiceUpdate(BaseModel):
 
 
 class Service(ServiceBase):
-    model_config = SCHEMA_CONFIG
-
     id: str
     company_id: Optional[str] = Field(None, alias="companyId")
     is_active: bool = Field(..., alias="isActive")

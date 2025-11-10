@@ -1,9 +1,7 @@
-from pathlib import Path
 # Create a FastAPI app instance
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi import APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from app.core.settings import settings
 from app.routes.user_route import router as user_router
 from app.routes.sync_route import router as sync_router
@@ -30,6 +28,7 @@ from app.routes.file_route import router as file_router
 from app.routes.user_role_route import router as user_role_router
 from app.routes.company_role_route import router as company_role_router
 from app.routes.migration_route import router as migration_router
+from app.routes.dashboard_route import router as dashboard_router
 
 from app.core.database import init_database, get_database_info
 # Import all models to ensure they're registered with Base.metadata
@@ -55,60 +54,39 @@ async def startup_event():
     """Initialize database on startup"""
     await init_database()
 
-# API router with /api prefix to avoid conflicts with static site at '/'
-api_router = APIRouter(prefix="/api")
-
-@api_router.get("/health")
+@app.get("/health")
 async def health():
     return {"status": "ok"}
 
-@api_router.get("/database-info")
+@app.get("/database-info")
 async def get_database_info_endpoint():
     """Get information about current database configuration"""
     return get_database_info()
 
-# Include all routers under /api
-api_router.include_router(auth_router)
-api_router.include_router(user_router)
-api_router.include_router(sync_router)
-api_router.include_router(product_router)
-api_router.include_router(supplier_router)
-api_router.include_router(client_router)
-api_router.include_router(service_router)
-api_router.include_router(stock_movement_router)
-api_router.include_router(sales_router)
-api_router.include_router(purchase_order_router)
-api_router.include_router(reception_router)
-api_router.include_router(employee_router)
-api_router.include_router(leave_router)
-api_router.include_router(payroll_router)
-api_router.include_router(performance_router)
-api_router.include_router(utils_router)
-api_router.include_router(activity_router)
-api_router.include_router(company_router)
-api_router.include_router(proforma_router)
-api_router.include_router(invitation_router)
-api_router.include_router(activation_key_router)
-api_router.include_router(file_router)
-api_router.include_router(user_role_router)
-api_router.include_router(company_role_router)
-api_router.include_router(migration_router)
-
-app.include_router(api_router)
-
-# Serve static frontend: prefer backend/web, fallback to frontend-app/dist
-try:
-    base_dir = Path(__file__).parent.parent
-    backend_web = base_dir / "web"
-    if backend_web.exists():
-        app.mount("/", StaticFiles(directory=str(backend_web), html=True), name="static")
-        print(f"✅ Serving frontend from: {backend_web}")
-    else:
-        frontend_dist = base_dir.parent / "frontend-app" / "dist"
-        if frontend_dist.exists():
-            app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="static")
-            print(f"✅ Serving frontend from: {frontend_dist}")
-        else:
-            print("⚠️ Frontend dist folder not found - API only mode")
-except Exception as e:
-    print(f"⚠️ Failed to mount static files: {e}")
+# Include all routers directly without /api prefix
+app.include_router(auth_router)
+app.include_router(user_router)
+app.include_router(sync_router)
+app.include_router(product_router)
+app.include_router(supplier_router)
+app.include_router(client_router)
+app.include_router(service_router)
+app.include_router(stock_movement_router)
+app.include_router(sales_router)
+app.include_router(purchase_order_router)
+app.include_router(reception_router)
+app.include_router(employee_router)
+app.include_router(leave_router)
+app.include_router(payroll_router)
+app.include_router(performance_router)
+app.include_router(utils_router)
+app.include_router(activity_router)
+app.include_router(company_router)
+app.include_router(proforma_router)
+app.include_router(invitation_router)
+app.include_router(activation_key_router)
+app.include_router(file_router)
+app.include_router(user_role_router)
+app.include_router(company_role_router)
+app.include_router(migration_router)
+app.include_router(dashboard_router)

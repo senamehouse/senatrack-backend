@@ -1,11 +1,11 @@
-from pydantic import BaseModel, Field, ConfigDict
+from app.utils.casing import BaseCamelModel
+from pydantic import Field
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
 
-class ActivityLogBase(BaseModel):
+class ActivityLogBase(BaseCamelModel):
     """Base activity log schema"""
-    model_config = ConfigDict(populate_by_name=True, from_attributes=True, serialize_by_alias=True)
     
     action: str = Field(..., min_length=1, max_length=255)
     details: str = Field(..., min_length=1)
@@ -24,15 +24,13 @@ class ActivityLogCreate(ActivityLogBase):
 
 class ActivityLog(ActivityLogBase):
     """Schema for activity log response"""
-    model_config = ConfigDict(populate_by_name=True, from_attributes=True, serialize_by_alias=True)
     
     id: str
     created_at: datetime = Field(..., alias="createdAt")
 
 
-class ActivityLogFilters(BaseModel):
+class ActivityLogFilters(BaseCamelModel):
     """Schema for activity log filters"""
-    model_config = ConfigDict(populate_by_name=True, from_attributes=True, serialize_by_alias=True)
     
     user_id: Optional[int] = Field(None, alias="userId")
     company_id: Optional[str] = Field(None, alias="companyId")
@@ -44,9 +42,8 @@ class ActivityLogFilters(BaseModel):
     limit: Optional[int] = Field(100, ge=1, le=1000)
 
 
-class ActivityLogStats(BaseModel):
+class ActivityLogStats(BaseCamelModel):
     """Schema for activity log statistics"""
-    model_config = ConfigDict(populate_by_name=True, from_attributes=True, serialize_by_alias=True)
     
     total: int
     today: int

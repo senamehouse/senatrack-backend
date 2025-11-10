@@ -4,12 +4,13 @@ import hashlib
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime
+import aiofiles
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import select, update
 
 from app.core.settings import settings
-from app.core.database import get_sessionmaker
+from app.core.database import get_db_session
 from app.models.file_model import FileRecord
 from app.services.upload_service import UploadService
 
@@ -65,12 +66,11 @@ class FileService:
         file_hash = self._generate_hash(content, entity_id, field_name)
 
         # try dedupe by hash
-        Session = get_sessionmaker()
-        async with Session() as session:
-            existing = await session.execute(
-                select(FileRecord).where(FileRecord.file_hash == file_hash, FileRecord.is_active == True).limit(1)
-            )
-            existing_file = existing.scalar_one_or_none()
+        session = get_db_session()
+        existing = await session.execute(
+            select(FileRecord).where(FileRecord.file_hash == file_hash, FileRecord.is_active == True).limit(1)
+        )
+        existing_file = existing.scalar_one_or_none()
 
         if existing_file:
             # Link to existing file, optionally disable previous links for same field
@@ -139,19 +139,18 @@ class FileService:
         }
 
     async def _deactivate_existing(self, entity_type: str, entity_id: str, field_name: str):
-        Session = get_sessionmaker()
-        async with Session() as session:
-            rows = await session.execute(
-                select(FileRecord).where(
-                    FileRecord.entity_type == entity_type,
-                    FileRecord.entity_id == entity_id,
-                    FileRecord.field_name == field_name,
-                    FileRecord.is_active == True,
-                )
+        session = get_db_session()
+        rows = await session.execute(
+            select(FileRecord).where(
+                FileRecord.entity_type == entity_type,
+                FileRecord.entity_id == entity_id,
+                FileRecord.field_name == field_name,
+                FileRecord.is_active == True,
             )
-            for rec in rows.scalars().all():
-                rec.is_active = False
-            await session.commit()
+        )
+        for rec in rows.scalars().all():
+            rec.is_active = False
+        await session.commit()
 
     async def _clone_link(
         self,
@@ -161,37 +160,36 @@ class FileService:
         field_name: str,
         company_id: Optional[str],
     ) -> Dict[str, Any]:
-        Session = get_sessionmaker()
-        async with Session() as session:
-            clone = FileRecord(
-                filename=src.filename,
-                original_filename=src.original_filename,
-                file_path=src.file_path,
-                remote_url=src.remote_url,
-                file_size=src.file_size,
-                content_type=src.content_type,
-                file_hash=src.file_hash,
-                entity_type=entity_type,
-                entity_id=entity_id,
-                field_name=field_name,
-                company_id=company_id,
-                storage_mode=src.storage_mode,
-                sync_status=src.sync_status,
-            )
-            session.add(clone)
-            await session.commit()
-            await session.refresh(clone)
-            return {
-                "file_id": clone.id,
-                "url": f"/api/files/{clone.id}",
-                "filename": clone.filename,
-                "original_filename": clone.original_filename,
-                "file_size": clone.file_size,
-                "content_type": clone.content_type,
-                "storage_mode": clone.storage_mode,
-                "sync_status": clone.sync_status,
-                "reused_existing": True,
-            }
+        session = get_db_session()
+        clone = FileRecord(
+            filename=src.filename,
+            original_filename=src.original_filename,
+            file_path=src.file_path,
+            remote_url=src.remote_url,
+            file_size=src.file_size,
+            content_type=src.content_type,
+            file_hash=src.file_hash,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            field_name=field_name,
+            company_id=company_id,
+            storage_mode=src.storage_mode,
+            sync_status=src.sync_status,
+        )
+        session.add(clone)
+        await session.commit()
+        await session.refresh(clone)
+        return {
+            "file_id": clone.id,
+            "url": f"/api/files/{clone.id}",
+            "filename": clone.filename,
+            "original_filename": clone.original_filename,
+            "file_size": clone.file_size,
+            "content_type": clone.content_type,
+            "storage_mode": clone.storage_mode,
+            "sync_status": clone.sync_status,
+            "reused_existing": True,
+        }
 
     async def _create_record(
         self,
@@ -209,131 +207,151 @@ class FileService:
         storage_mode: str,
         sync_status: str,
     ) -> FileRecord:
-        Session = get_sessionmaker()
-        async with Session() as session:
-            rec = FileRecord(
-                filename=filename,
-                original_filename=original_filename,
-                file_path=file_path,
-                remote_url=remote_url,
-                file_size=file_size,
-                content_type=content_type,
-                file_hash=file_hash,
-                entity_type=entity_type,
-                entity_id=entity_id,
-                field_name=field_name,
-                company_id=company_id,
-                storage_mode=storage_mode,
-                sync_status=sync_status,
-                synced_at=datetime.utcnow() if sync_status == "synced" else None,
-            )
-            session.add(rec)
-            await session.commit()
-            await session.refresh(rec)
-            return rec
+        session = get_db_session()
+        rec = FileRecord(
+            filename=filename,
+            original_filename=original_filename,
+            file_path=file_path,
+            remote_url=remote_url,
+            file_size=file_size,
+            content_type=content_type,
+            file_hash=file_hash,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            field_name=field_name,
+            company_id=company_id,
+            storage_mode=storage_mode,
+            sync_status=sync_status,
+            synced_at=datetime.utcnow() if sync_status == "synced" else None,
+        )
+        session.add(rec)
+        await session.commit()
+        await session.refresh(rec)
+        return rec
 
 
     async def get_file(self, file_id: str) -> Optional[FileRecord]:
-        Session = get_sessionmaker()
-        async with Session() as session:
-            r = await session.execute(select(FileRecord).where(FileRecord.id == file_id))
-            return r.scalar_one_or_none()
+        session = get_db_session()
+        r = await session.execute(select(FileRecord).where(FileRecord.id == file_id))
+        return r.scalar_one_or_none()
+
+    async def get_entity_files(self, entity_type: str, entity_id: str) -> list[Dict[str, Any]]:
+        """Get all active files for a specific entity"""
+        session = get_db_session()
+        result = await session.execute(
+            select(FileRecord).where(
+                FileRecord.entity_type == entity_type,
+                FileRecord.entity_id == entity_id,
+                FileRecord.is_active == True,
+            )
+        )
+        files = result.scalars().all()
+        return [{
+            "file_id": f.id,
+            "url": f"/api/files/{f.id}",
+            "filename": f.filename,
+            "original_filename": f.original_filename,
+            "field_name": f.field_name,
+            "file_size": f.file_size,
+            "content_type": f.content_type,
+            "storage_mode": f.storage_mode,
+            "sync_status": f.sync_status,
+            "created_at": f.created_at.isoformat() if f.created_at else None,
+        } for f in files]
 
     async def delete_file(self, file_id: str) -> bool:
         """
         Delete a file record. Physical file deletion occurs only if no other
         active records reference the same file hash.
         """
-        Session = get_sessionmaker()
-        async with Session() as session:
-            r = await session.execute(select(FileRecord).where(FileRecord.id == file_id))
-            rec = r.scalar_one_or_none()
-            if not rec:
-                return False
-            rec.is_active = False
-            
-            # physical cleanup only if no other active refs to same hash
-            other = await session.execute(
-                select(FileRecord).where(
-                    FileRecord.file_hash == rec.file_hash,
-                    FileRecord.is_active == True,
-                    FileRecord.id != rec.id,
-                )
+        session = get_db_session()
+        r = await session.execute(select(FileRecord).where(FileRecord.id == file_id))
+        rec = r.scalar_one_or_none()
+        if not rec:
+            return False
+        rec.is_active = False
+        
+        # physical cleanup only if no other active refs to same hash
+        other = await session.execute(
+            select(FileRecord).where(
+                FileRecord.file_hash == rec.file_hash,
+                FileRecord.is_active == True,
+                FileRecord.id != rec.id,
             )
-            if not other.scalar_one_or_none():
-                # delete local file
-                try:
-                    if rec.file_path and os.path.exists(rec.file_path):
-                        os.remove(rec.file_path)
-                except Exception:
-                    pass
-                
-                # delete S3 file
-                try:
-                    if rec.remote_url:
-                        bucket_part = f"{self.upload_service.s3_bucket_name}.s3.{self.upload_service.s3_region}.amazonaws.com/"
-                        if bucket_part in rec.remote_url:
-                            key = rec.remote_url.split(bucket_part, 1)[-1]
-                            await self.upload_service.delete_from_s3(key)
-                except Exception:
-                    pass
+        )
+        if not other.scalar_one_or_none():
+            # delete local file
+            try:
+                if rec.file_path and os.path.exists(rec.file_path):
+                    os.remove(rec.file_path)
+            except Exception:
+                pass
             
-            await session.commit()
-            return True
+            # delete S3 file
+            try:
+                if rec.remote_url:
+                    bucket_part = f"{self.upload_service.s3_bucket_name}.s3.{self.upload_service.s3_region}.amazonaws.com/"
+                    if bucket_part in rec.remote_url:
+                        key = rec.remote_url.split(bucket_part, 1)[-1]
+                        await self.upload_service.delete_from_s3(key)
+            except Exception:
+                pass
+        
+        await session.commit()
+        return True
 
     async def sync_offline_to_online(self) -> Dict[str, Any]:
         """
         Sync offline files to online (S3).
         Uploads pending local files to S3 when switching from offline to online mode.
         """
-        Session = get_sessionmaker()
-        async with Session() as session:
-            rows = await session.execute(
-                select(FileRecord).where(
-                    FileRecord.sync_status == "pending",
-                    FileRecord.is_active == True,
-                    FileRecord.storage_mode == "local"
-                )
+        session = get_db_session()
+        rows = await session.execute(
+            select(FileRecord).where(
+                FileRecord.sync_status == "pending",
+                FileRecord.is_active == True,
+                FileRecord.storage_mode == "local"
             )
-            items = rows.scalars().all()
-            synced = 0
-            errors: list[str] = []
-            
-            for rec in items:
-                try:
-                    if not rec.file_path or not os.path.exists(rec.file_path):
-                        errors.append(f"Missing local file: {rec.file_path}")
-                        continue
-                    
-                    # Read local file
-                    with open(rec.file_path, "rb") as f:
-                        content = f.read()
-                    
-                    # Upload to S3
-                    s3_path = f"{rec.entity_type}/{rec.entity_id}/{rec.field_name}/{rec.filename}"
-                    remote_url = await self.upload_service.upload_to_s3(
-                        file_content=content,
-                        destination_path=s3_path,
-                        content_type=rec.content_type,
-                    )
-                    
-                    # Update record
-                    rec.remote_url = remote_url
-                    rec.sync_status = "synced"
-                    rec.storage_mode = "s3"
-                    rec.synced_at = datetime.utcnow()
-                    synced += 1
-                    
-                except Exception as e:
-                    errors.append(f"Error syncing {rec.filename}: {str(e)}")
-            
-            await session.commit()
-            return {
-                "synced_count": synced,
-                "errors": errors,
-                "total_pending": len(items),
-                "direction": "offline_to_online"
-            }
+        )
+        items = rows.scalars().all()
+        synced = 0
+        errors: list[str] = []
+        
+        for rec in items:
+            try:
+                if not rec.file_path or not os.path.exists(rec.file_path):
+                    errors.append(f"Missing local file: {rec.file_path}")
+                    continue
+                
+                # Read local file
+                async with aiofiles.open(rec.file_path, "rb") as f:
+                    content = await f.read()
+                
+                # Upload to S3
+                s3_path = f"{rec.entity_type}/{rec.entity_id}/{rec.field_name}/{rec.filename}"
+                remote_url = await self.upload_service.upload_to_s3(
+                    file_content=content,
+                    destination_path=s3_path,
+                    content_type=rec.content_type,
+                )
+                
+                # Update record
+                rec.remote_url = remote_url
+                rec.sync_status = "synced"
+                rec.storage_mode = "s3"
+                rec.synced_at = datetime.utcnow()
+                synced += 1
+                
+            except Exception as e:
+                errors.append(f"Error syncing {rec.filename}: {str(e)}")
+        
+        await session.commit()
+        return {
+            "synced_count": synced,
+            "errors": errors,
+            "total_pending": len(items),
+            "direction": "offline_to_online"
+        }
     
     async def sync_online_to_offline(self) -> Dict[str, Any]:
         """
@@ -342,53 +360,52 @@ class FileService:
         """
         import aiohttp
         
-        Session = get_sessionmaker()
-        async with Session() as session:
-            rows = await session.execute(
-                select(FileRecord).where(
-                    FileRecord.is_active == True,
-                    FileRecord.storage_mode == "s3",
-                    FileRecord.remote_url.isnot(None)
-                )
+        session = get_db_session()
+        rows = await session.execute(
+            select(FileRecord).where(
+                FileRecord.is_active == True,
+                FileRecord.storage_mode == "s3",
+                FileRecord.remote_url.isnot(None)
             )
-            items = rows.scalars().all()
-            synced = 0
-            errors: list[str] = []
-            
-            async with aiohttp.ClientSession() as http_session:
-                for rec in items:
-                    try:
-                        if not rec.remote_url:
+        )
+        items = rows.scalars().all()
+        synced = 0
+        errors: list[str] = []
+        
+        async with aiohttp.ClientSession() as http_session:
+            for rec in items:
+                try:
+                    if not rec.remote_url:
+                        continue
+                    
+                    # Download from S3
+                    async with http_session.get(rec.remote_url) as response:
+                        if response.status != 200:
+                            errors.append(f"Failed to download {rec.filename}: HTTP {response.status}")
                             continue
-                        
-                        # Download from S3
-                        async with http_session.get(rec.remote_url) as response:
-                            if response.status != 200:
-                                errors.append(f"Failed to download {rec.filename}: HTTP {response.status}")
-                                continue
-                            content = await response.read()
-                        
-                        # Save to local
-                        storage_dir = self._entity_storage_dir(rec.entity_type, rec.entity_id, rec.field_name)
-                        storage_dir.mkdir(parents=True, exist_ok=True)
-                        file_path = storage_dir / rec.filename
-                        with open(file_path, "wb") as f:
-                            f.write(content)
-                        
-                        # Update record
-                        rec.file_path = str(file_path)
-                        rec.storage_mode = "local"
-                        synced += 1
-                        
-                    except Exception as e:
-                        errors.append(f"Error syncing {rec.filename}: {str(e)}")
-            
-            await session.commit()
-            return {
-                "synced_count": synced,
-                "errors": errors,
-                "total_processed": len(items),
-                "direction": "online_to_offline"
-            }
+                        content = await response.read()
+                    
+                    # Save to local
+                    storage_dir = self._entity_storage_dir(rec.entity_type, rec.entity_id, rec.field_name)
+                    storage_dir.mkdir(parents=True, exist_ok=True)
+                    file_path = storage_dir / rec.filename
+                    with open(file_path, "wb") as f:
+                        f.write(content)
+                    
+                    # Update record
+                    rec.file_path = str(file_path)
+                    rec.storage_mode = "local"
+                    synced += 1
+                    
+                except Exception as e:
+                    errors.append(f"Error syncing {rec.filename}: {str(e)}")
+        
+        await session.commit()
+        return {
+            "synced_count": synced,
+            "errors": errors,
+            "total_processed": len(items),
+            "direction": "online_to_offline"
+        }
 
 

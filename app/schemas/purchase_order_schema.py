@@ -1,11 +1,10 @@
-from pydantic import BaseModel, Field
+from app.utils.casing import BaseCamelModel
+from pydantic import Field
 from datetime import datetime
 from typing import Optional
-from . import SCHEMA_CONFIG
 
 
-class PurchaseOrderBase(BaseModel):
-    model_config = SCHEMA_CONFIG
+class PurchaseOrderBase(BaseCamelModel):
 
     order_number: str = Field(..., alias="orderNumber")
     supplier_id: Optional[str] = Field(None, alias="supplierId")
@@ -17,8 +16,7 @@ class PurchaseOrderCreate(PurchaseOrderBase):
     pass
 
 
-class PurchaseOrderUpdate(BaseModel):
-    model_config = SCHEMA_CONFIG
+class PurchaseOrderUpdate(BaseCamelModel):
 
     order_number: Optional[str] = Field(None, alias="orderNumber")
     supplier_id: Optional[str] = Field(None, alias="supplierId")
@@ -27,8 +25,6 @@ class PurchaseOrderUpdate(BaseModel):
 
 
 class PurchaseOrder(PurchaseOrderBase):
-    model_config = SCHEMA_CONFIG
-
     id: str
     company_id: Optional[str] = Field(None, alias="companyId")
     created_at: datetime = Field(..., alias="createdAt")

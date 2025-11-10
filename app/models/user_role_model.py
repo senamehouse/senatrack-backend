@@ -61,3 +61,4 @@ class UserRoleAssignment(Base):
             "assigned_by": self.assigned_by,
             "assigned_at": self.assigned_at.isoformat() if self.assigned_at else None
         }
+

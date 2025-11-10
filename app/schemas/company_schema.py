@@ -1,12 +1,11 @@
-from pydantic import BaseModel, Field, EmailStr
+from app.utils.casing import BaseCamelModel
+from pydantic import Field, EmailStr
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from . import SCHEMA_CONFIG
 
 # Company Member Schemas
-class CompanyMemberBase(BaseModel):
+class CompanyMemberBase(BaseCamelModel):
     """Base company member schema"""
-    model_config = SCHEMA_CONFIG
     
     user_id: str = Field(..., alias="userId")
     invited_by: Optional[str] = Field(None, alias="invitedBy")
@@ -28,7 +27,6 @@ class CompanyMemberCreate(CompanyMemberBase):
 
 class CompanyMember(CompanyMemberBase):
     """Complete company member schema"""
-    model_config = SCHEMA_CONFIG
     
     id: str
     company_id: str = Field(..., alias="companyId")
@@ -36,9 +34,8 @@ class CompanyMember(CompanyMemberBase):
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
 # Company Schemas
-class CompanyBase(BaseModel):
+class CompanyBase(BaseCamelModel):
     """Base company schema"""
-    model_config = SCHEMA_CONFIG
     
     name: str = Field(..., min_length=1, max_length=255)
     email: Optional[EmailStr] = None
@@ -55,13 +52,11 @@ class CompanyBase(BaseModel):
 
 class CompanyCreate(CompanyBase):
     """Schema for creating a company"""
-    model_config = SCHEMA_CONFIG
     
     owner_id: str = Field(..., alias="ownerId")
 
-class CompanyUpdate(BaseModel):
+class CompanyUpdate(BaseCamelModel):
     """Schema for updating a company"""
-    model_config = SCHEMA_CONFIG
     
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     email: Optional[EmailStr] = None
@@ -80,7 +75,6 @@ class CompanyUpdate(BaseModel):
 
 class Company(CompanyBase):
     """Complete company schema"""
-    model_config = SCHEMA_CONFIG
     
     id: str
     owner_id: str = Field(..., alias="ownerId")
@@ -92,9 +86,8 @@ class Company(CompanyBase):
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
 # Company Settings Schema
-class CompanySettings(BaseModel):
+class CompanySettings(BaseCamelModel):
     """Company settings schema"""
-    model_config = SCHEMA_CONFIG
     
     modules: Dict[str, bool] = {
         "clients": True,
@@ -106,9 +99,8 @@ class CompanySettings(BaseModel):
     }
 
 # Company Subscription Schema
-class CompanySubscription(BaseModel):
+class CompanySubscription(BaseCamelModel):
     """Company subscription schema"""
-    model_config = SCHEMA_CONFIG
     
     plan: str = Field(..., pattern="^(free_trial|basic|premium|enterprise)$")
     access_end_date: str = Field(..., alias="accessEndDate")  # ISO string
@@ -116,11 +108,16 @@ class CompanySubscription(BaseModel):
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
 # Company Stats Schema
-class CompanyStats(BaseModel):
+class CompanyStats(BaseCamelModel):
     """Company statistics schema"""
-    model_config = SCHEMA_CONFIG
     
     total: int
     recent_24h: int = Field(..., alias="recent24h")
     active_subscriptions: int = Field(..., alias="activeSubscriptions")
     expired_subscriptions: int = Field(..., alias="expiredSubscriptions")
+
+# Company Member Response Schema
+class CompanyMemberResponse(BaseCamelModel):
+    """Response schema for company member operations"""
+    message: str
+    member: CompanyMember

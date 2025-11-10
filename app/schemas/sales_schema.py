@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from app.utils.casing import BaseCamelModel
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -19,7 +19,7 @@ class PaymentMethod(str, Enum):
     MOBILE_MONEY = "mobile_money"
 
 
-class SaleItemBase(BaseModel):
+class SaleItemBase(BaseCamelModel):
     product_id: str
     product_name: str
     quantity: int
@@ -35,11 +35,8 @@ class SaleItem(SaleItemBase):
     id: str
     sale_id: str
 
-    class Config:
-        from_attributes = True
 
-
-class SaleBase(BaseModel):
+class SaleBase(BaseCamelModel):
     reference: str
     date: datetime
     client_id: Optional[int] = None
@@ -62,7 +59,7 @@ class SaleCreate(SaleBase):
     items: List[SaleItemCreate] = []
 
 
-class SaleUpdate(BaseModel):
+class SaleUpdate(BaseCamelModel):
     reference: Optional[str] = None
     date: Optional[datetime] = None
     client_id: Optional[int] = None
@@ -87,6 +84,3 @@ class Sale(SaleBase):
     created_at: datetime
     updated_at: datetime
     items: List[SaleItem] = []
-
-    class Config:
-        from_attributes = True

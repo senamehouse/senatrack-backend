@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user, get_company_id
+from app.core.database import get_async_db
 from app.schemas.user_schema import User
 from app.schemas.proforma_schema import (
     Proforma, ProformaCreate, ProformaUpdate, ProformaStats, ProformaFilter
@@ -13,6 +15,7 @@ proforma_service = ProformaService()
 @router.post("/", response_model=Proforma, status_code=status.HTTP_201_CREATED)
 async def create_proforma(
     proforma_data: ProformaCreate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -26,6 +29,7 @@ async def get_company_proformas(
     client_name: Optional[str] = Query(None, description="Filter by client name"),
     status: Optional[str] = Query(None, description="Filter by status"),
     limit: Optional[int] = Query(None, ge=1, le=100, description="Limit results"),
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -40,6 +44,7 @@ async def get_company_proformas(
 @router.get("/{proforma_id}", response_model=Proforma)
 async def get_proforma(
     proforma_id: int,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -53,6 +58,7 @@ async def get_proforma(
 async def update_proforma(
     proforma_id: int,
     proforma_data: ProformaUpdate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -62,6 +68,7 @@ async def update_proforma(
 @router.delete("/{proforma_id}")
 async def delete_proforma(
     proforma_id: int,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -74,6 +81,7 @@ async def delete_proforma(
 @router.get("/stats/{company_id}", response_model=ProformaStats)
 async def get_proforma_stats(
     company_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     header_company_id: str = Depends(get_company_id)
 ):
@@ -84,6 +92,7 @@ async def get_proforma_stats(
 async def get_proformas_by_client(
     company_id: str,
     client_name: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     header_company_id: str = Depends(get_company_id)
 ):
@@ -94,6 +103,7 @@ async def get_proformas_by_client(
 async def get_recent_proformas(
     company_id: str,
     limit: int = Query(10, ge=1, le=50, description="Number of recent proformas"),
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     header_company_id: str = Depends(get_company_id)
 ):
@@ -103,6 +113,7 @@ async def get_recent_proformas(
 @router.post("/generate-number/{company_id}")
 async def generate_proforma_number(
     company_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     header_company_id: str = Depends(get_company_id)
 ):

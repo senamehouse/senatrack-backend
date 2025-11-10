@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.product_schema import (
     Product, ProductCreate, ProductUpdate,
     ProductCategory, ProductCategoryCreate, ProductCategoryUpdate,
@@ -8,6 +9,7 @@ from app.schemas.product_schema import (
 )
 from app.services.product_service import ProductService
 from app.core.dependencies import get_current_user, get_company_id
+from app.core.database import get_async_db
 from app.schemas.user_schema import User
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -15,13 +17,18 @@ product_service = ProductService()
 
 # Product Category Routes
 @router.get("/categories", response_model=List[ProductCategory])
-async def get_all_categories(current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+async def get_all_categories(
+    session: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user), 
+    company_id: str = Depends(get_company_id)
+):
     """Get all product categories"""
     return await product_service.get_all_categories(company_id)
 
 @router.get("/categories/{category_id}", response_model=ProductCategory)
 async def get_category(
     category_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -34,6 +41,7 @@ async def get_category(
 @router.post("/categories", response_model=dict)
 async def create_category(
     category_data: ProductCategoryCreate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -45,6 +53,7 @@ async def create_category(
 async def update_category(
     category_id: str,
     category_data: ProductCategoryUpdate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -57,6 +66,7 @@ async def update_category(
 @router.delete("/categories/{category_id}", response_model=dict)
 async def delete_category(
     category_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -68,13 +78,18 @@ async def delete_category(
 
 # Unit Routes
 @router.get("/units", response_model=List[Unit])
-async def get_all_units(current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+async def get_all_units(
+    session: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user), 
+    company_id: str = Depends(get_company_id)
+):
     """Get all units"""
     return await product_service.get_all_units(company_id)
 
 @router.get("/units/{unit_id}", response_model=Unit)
 async def get_unit(
     unit_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -87,6 +102,7 @@ async def get_unit(
 @router.post("/units", response_model=dict)
 async def create_unit(
     unit_data: UnitCreate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -98,6 +114,7 @@ async def create_unit(
 async def update_unit(
     unit_id: str,
     unit_data: UnitUpdate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -110,6 +127,7 @@ async def update_unit(
 @router.delete("/units/{unit_id}", response_model=dict)
 async def delete_unit(
     unit_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -123,6 +141,7 @@ async def delete_unit(
 @router.get("/", response_model=List[Product])
 async def get_all_products(
     category_id: Optional[str] = Query(None),
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -134,6 +153,7 @@ async def get_all_products(
 @router.get("/{product_id}", response_model=Product)
 async def get_product(
     product_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -146,6 +166,7 @@ async def get_product(
 @router.post("/", response_model=dict)
 async def create_product(
     product_data: ProductCreate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -157,6 +178,7 @@ async def create_product(
 async def update_product(
     product_id: str,
     product_data: ProductUpdate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -169,6 +191,7 @@ async def update_product(
 @router.delete("/{product_id}", response_model=dict)
 async def delete_product(
     product_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -180,17 +203,29 @@ async def delete_product(
 
 # Statistics Routes
 @router.get("/stats/products", response_model=ProductStats)
-async def get_product_stats(current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+async def get_product_stats(
+    session: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user), 
+    company_id: str = Depends(get_company_id)
+):
     """Get product statistics"""
     return await product_service.get_product_stats(company_id)
 
 @router.get("/stats/categories", response_model=ProductCategoryStats)
-async def get_category_stats(current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+async def get_category_stats(
+    session: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user), 
+    company_id: str = Depends(get_company_id)
+):
     """Get product category statistics"""
     return await product_service.get_category_stats(company_id)
 
 @router.get("/stats/units", response_model=UnitStats)
-async def get_unit_stats(current_user: User = Depends(get_current_user), company_id: str = Depends(get_company_id)):
+async def get_unit_stats(
+    session: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user), 
+    company_id: str = Depends(get_company_id)
+):
     """Get unit statistics"""
     return await product_service.get_unit_stats(company_id)
 

@@ -1,11 +1,10 @@
-from pydantic import BaseModel, Field
+from app.utils.casing import BaseCamelModel
+from pydantic import Field
 from datetime import datetime
 from typing import Optional
-from . import SCHEMA_CONFIG
 
 
-class ClientBase(BaseModel):
-    model_config = SCHEMA_CONFIG
+class ClientBase(BaseCamelModel):
 
     name: str = Field(..., min_length=1, max_length=255)
     email: Optional[str] = Field(None, max_length=255)
@@ -18,8 +17,7 @@ class ClientCreate(ClientBase):
     pass
 
 
-class ClientUpdate(BaseModel):
-    model_config = SCHEMA_CONFIG
+class ClientUpdate(BaseCamelModel):
 
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     email: Optional[str] = Field(None, max_length=255)
@@ -30,8 +28,6 @@ class ClientUpdate(BaseModel):
 
 
 class Client(ClientBase):
-    model_config = SCHEMA_CONFIG
-
     id: str
     company_id: Optional[str] = Field(None, alias="companyId")
     is_active: bool = Field(..., alias="isActive")

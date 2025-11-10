@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user
+from app.core.database import get_async_db
 from app.schemas.user_schema import User
 from app.schemas.activation_key_schema import (
     ActivationKey, ActivationKeyCreate, ActivationKeyUpdate,
@@ -14,6 +16,7 @@ activation_key_service = ActivationKeyService()
 @router.post("/", response_model=ActivationKey, status_code=status.HTTP_201_CREATED)
 async def create_activation_key(
     key_data: ActivationKeyCreate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Create a new activation key (admin only)"""
@@ -22,6 +25,7 @@ async def create_activation_key(
 
 @router.get("/", response_model=List[ActivationKey])
 async def get_all_activation_keys(
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get all activation keys (admin only)"""
@@ -30,7 +34,8 @@ async def get_all_activation_keys(
 
 @router.get("/{key_id}", response_model=ActivationKey)
 async def get_activation_key(
-    key_id: int,
+    key_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get an activation key by ID"""
@@ -42,6 +47,7 @@ async def get_activation_key(
 @router.get("/key/{key}", response_model=ActivationKey)
 async def get_activation_key_by_key(
     key: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get an activation key by key string"""
@@ -52,8 +58,9 @@ async def get_activation_key_by_key(
 
 @router.put("/{key_id}", response_model=ActivationKey)
 async def update_activation_key(
-    key_id: int,
+    key_id: str,
     key_data: ActivationKeyUpdate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Update an activation key (admin only)"""
@@ -62,7 +69,8 @@ async def update_activation_key(
 
 @router.delete("/{key_id}")
 async def delete_activation_key(
-    key_id: int,
+    key_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Delete an activation key (admin only)"""
@@ -75,6 +83,7 @@ async def delete_activation_key(
 @router.post("/use", response_model=ActivationKeyUsageResponse)
 async def use_activation_key(
     usage_data: ActivationKeyUsage,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Use an activation key"""
@@ -87,6 +96,7 @@ async def use_activation_key(
 
 @router.get("/stats/overview", response_model=ActivationKeyStats)
 async def get_activation_key_stats(
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get activation key statistics (admin only)"""

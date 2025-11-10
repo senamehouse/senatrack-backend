@@ -1,11 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Optional
 from datetime import datetime
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.activity_schema import (
     ActivityLog, ActivityLogCreate, ActivityLogFilters, ActivityLogStats
 )
 from app.services.activity_service import ActivityService
 from app.core.dependencies import get_current_user, get_company_id
+from app.core.database import get_async_db
 from app.schemas.user_schema import User
 
 router = APIRouter(prefix="/activities", tags=["Activity Logs"])
@@ -14,6 +16,7 @@ activity_service = ActivityService()
 @router.post("/", response_model=dict)
 async def create_activity_log(
     activity_data: ActivityLogCreate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Create a new activity log"""
@@ -29,6 +32,7 @@ async def get_activity_logs(
     end_date: Optional[datetime] = Query(None),
     actions: Optional[str] = Query(None),  # Comma-separated list
     limit: int = Query(100, ge=1, le=1000),
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -54,6 +58,7 @@ async def get_activity_logs(
 @router.get("/recent", response_model=List[ActivityLog])
 async def get_recent_activities(
     limit: int = Query(50, ge=1, le=100),
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -63,6 +68,7 @@ async def get_recent_activities(
 @router.get("/{activity_id}", response_model=ActivityLog)
 async def get_activity_log(
     activity_id: int,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get activity log by ID"""
@@ -73,6 +79,7 @@ async def get_activity_log(
 
 @router.get("/stats/overview", response_model=ActivityLogStats)
 async def get_activity_stats(
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
@@ -82,6 +89,7 @@ async def get_activity_stats(
 @router.delete("/cleanup", response_model=dict)
 async def cleanup_old_activities(
     days_to_keep: int = Query(90, ge=1, le=365),
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Delete old activity logs (admin function)"""

@@ -1,7 +1,7 @@
-from pydantic import BaseModel, Field
+from app.utils.casing import BaseCamelModel
+from pydantic import Field
 from typing import List, Optional
 from datetime import datetime
-from . import SCHEMA_CONFIG
 
 # Platform Permission Constants
 class PlatformPermissions:
@@ -19,9 +19,8 @@ class PlatformPermissions:
     ADMIN_SYSTEM_SETTINGS = "admin.system_settings"
 
 # UserRole Schemas
-class UserRoleBase(BaseModel):
+class UserRoleBase(BaseCamelModel):
     """Base user role schema"""
-    model_config = SCHEMA_CONFIG
     
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
@@ -33,9 +32,8 @@ class UserRoleCreate(UserRoleBase):
     """Schema for creating a user role"""
     pass
 
-class UserRoleUpdate(BaseModel):
+class UserRoleUpdate(BaseCamelModel):
     """Schema for updating a user role"""
-    model_config = SCHEMA_CONFIG
     
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
@@ -43,16 +41,14 @@ class UserRoleUpdate(BaseModel):
 
 class UserRole(UserRoleBase):
     """Complete user role schema"""
-    model_config = SCHEMA_CONFIG
     
     id: str
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
 # UserRoleAssignment Schemas
-class UserRoleAssignmentBase(BaseModel):
+class UserRoleAssignmentBase(BaseCamelModel):
     """Base user role assignment schema"""
-    model_config = SCHEMA_CONFIG
     
     user_id: str = Field(..., alias="userId")
     role_id: str = Field(..., alias="roleId")
@@ -64,22 +60,19 @@ class UserRoleAssignmentCreate(UserRoleAssignmentBase):
 
 class UserRoleAssignment(UserRoleAssignmentBase):
     """Complete user role assignment schema"""
-    model_config = SCHEMA_CONFIG
     
     id: str
     assigned_at: datetime = Field(..., alias="assignedAt")
 
 # Permission Check Schema
-class PermissionCheck(BaseModel):
+class PermissionCheck(BaseCamelModel):
     """Schema for checking permissions"""
-    model_config = SCHEMA_CONFIG
     
     permission: str = Field(..., description="Permission to check")
     user_id: Optional[str] = Field(None, alias="userId", description="User ID to check (defaults to current user)")
 
-class PermissionCheckResponse(BaseModel):
+class PermissionCheckResponse(BaseCamelModel):
     """Response for permission check"""
-    model_config = SCHEMA_CONFIG
     
     has_permission: bool = Field(..., alias="hasPermission")
     user_id: str = Field(..., alias="userId")
@@ -115,3 +108,4 @@ DEFAULT_PLATFORM_ROLES = {
         "is_system": True
     }
 }
+

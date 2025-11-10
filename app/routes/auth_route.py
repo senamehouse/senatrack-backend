@@ -1,76 +1,105 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Response, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.auth_service import AuthService
 from app.schemas.auth_schema import Token, TokenRefresh
 from app.schemas.user_schema import (
     UserRegister, UserLogin, PasswordChange, 
-    User, UserUpdate
+    User, UserUpdate, UserProfileResponse
 )
 from app.core.dependencies import get_current_user, get_current_active_user
-from app.schemas.user_schema import User
+from app.core.database import get_async_db
+from app.core.settings import settings
+from app.utils.cookie_utils import set_auth_cookies
+from typing import Dict, Any, Optional
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 auth_service = AuthService()
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(user_data: UserRegister):
+async def register(
+    user_data: UserRegister,
+    response: Response,
+    session: AsyncSession = Depends(get_async_db)
+):
     """Register a new user"""
-    return await auth_service.register_user(user_data)
+    result = await auth_service.register_user(user_data)
+    
+    # Set HTTP-only cookies
+    set_auth_cookies(
+        response=response,
+        access_token=result["accessToken"],
+        refresh_token=result["refreshToken"],
+        company_id=result.get("user", {}).get("currentCompanyId")
+    )
+    
+    return result
 
 @router.post("/login", response_model=Token)
-async def login(login_data: UserLogin):
+async def login(
+    login_data: UserLogin,
+    response: Response,
+    session: AsyncSession = Depends(get_async_db)
+):
     """Login user and get access token"""
-    return await auth_service.login_user(login_data)
+    token_data = await auth_service.login_user(login_data)
+    
+    # Set HTTP-only cookies
+    user = await auth_service.get_current_user(token_data.access_token)
+    set_auth_cookies(
+        response=response,
+        access_token=token_data.access_token,
+        refresh_token=token_data.refresh_token,
+        company_id=user.current_company_id
+    )
+    
+    return token_data
 
 @router.post("/refresh", response_model=Token)
-async def refresh_token(token_data: TokenRefresh):
+async def refresh_token(
+    token_data: TokenRefresh,
+    session: AsyncSession = Depends(get_async_db)
+):
     """Refresh access token using refresh token"""
     return await auth_service.refresh_access_token(token_data.refresh_token)
-
-@router.post("/logout")
-async def logout(token_data: TokenRefresh):
-    """Logout user (revoke refresh token)"""
-    return await auth_service.logout_user(token_data.refresh_token)
-
-@router.post("/logout-all")
-async def logout_all_sessions(current_user: User = Depends(get_current_user)):
-    """Logout user from all sessions"""
-    return await auth_service.logout_all_sessions(current_user.id)
 
 @router.post("/change-password")
 async def change_password(
     password_data: PasswordChange,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Change user password"""
     return await auth_service.change_password(current_user.id, password_data)
 
-@router.get("/me", response_model=User)
-async def get_current_user_profile(current_user: User = Depends(get_current_user)):
-    """Get current user profile"""
-    # If user doesn't have a current company, set the first available one
-    if not current_user.current_company_id:
-        from app.services.company_service import CompanyService
-        company_service = CompanyService()
-        companies = await company_service.get_user_companies(current_user.id)
-        
-        if companies and len(companies) > 0:
-            # Set the first company as current
-            from app.services.user_service import UserService
-            user_service = UserService()
-            await user_service.update_user(current_user.id, {"current_company_id": companies[0].id})
-            
-            # Return user with updated current_company_id
-            updated_user = await user_service.get_user_by_id(current_user.id)
-            return updated_user if updated_user else current_user
+@router.get("/me", response_model=UserProfileResponse)
+async def get_current_user_profile(
+    request: Request,
+    session: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user)
+) -> UserProfileResponse:
+    """Get current user profile with tokens and company data"""
+    # Get tokens from cookies
+    access_token = request.cookies.get("session")
+    refresh_token = request.cookies.get("refreshToken")
     
-    return User(**current_user.model_dump())
+    # If no tokens in cookies, this shouldn't happen but handle gracefully
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+    
+    # Get user profile from service
+    return await auth_service.get_user_profile(current_user, access_token, refresh_token)
 
 @router.put("/me", response_model=User)
 async def update_current_user_profile(
     profile_data: UserUpdate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Update current user profile"""
-    # This would need to be implemented in the user service
-    # For now, return the current user
-    return User(**current_user.model_dump())
+    from app.services.user_service import UserService
+    user_service = UserService()
+    return await user_service.update_user(current_user.id, profile_data)

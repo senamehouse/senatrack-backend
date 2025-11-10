@@ -1,7 +1,7 @@
-from pydantic import BaseModel, Field
+from app.utils.casing import BaseCamelModel
+from pydantic import Field
 from typing import List, Optional
 from datetime import datetime
-from . import SCHEMA_CONFIG
 
 # Company Permission Constants
 class CompanyPermissions:
@@ -59,9 +59,8 @@ class CompanyPermissions:
     INVOICES_DELETE = "invoices.delete"
 
 # UserCompanyRole Schemas
-class UserCompanyRoleBase(BaseModel):
+class UserCompanyRoleBase(BaseCamelModel):
     """Base user company role schema"""
-    model_config = SCHEMA_CONFIG
     
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
@@ -73,9 +72,8 @@ class UserCompanyRoleCreate(UserCompanyRoleBase):
     """Schema for creating a user company role"""
     pass
 
-class UserCompanyRoleUpdate(BaseModel):
+class UserCompanyRoleUpdate(BaseCamelModel):
     """Schema for updating a user company role"""
-    model_config = SCHEMA_CONFIG
     
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
@@ -83,7 +81,6 @@ class UserCompanyRoleUpdate(BaseModel):
 
 class UserCompanyRole(UserCompanyRoleBase):
     """Complete user company role schema"""
-    model_config = SCHEMA_CONFIG
     
     id: str
     company_id: str = Field(..., alias="companyId")
@@ -91,9 +88,8 @@ class UserCompanyRole(UserCompanyRoleBase):
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
 # UserCompanyRoleAssignment Schemas
-class UserCompanyRoleAssignmentBase(BaseModel):
+class UserCompanyRoleAssignmentBase(BaseCamelModel):
     """Base user company role assignment schema"""
-    model_config = SCHEMA_CONFIG
     
     user_id: str = Field(..., alias="userId")
     company_id: str = Field(..., alias="companyId")
@@ -106,29 +102,40 @@ class UserCompanyRoleAssignmentCreate(UserCompanyRoleAssignmentBase):
 
 class UserCompanyRoleAssignment(UserCompanyRoleAssignmentBase):
     """Complete user company role assignment schema"""
-    model_config = SCHEMA_CONFIG
     
     id: str
     assigned_at: datetime = Field(..., alias="assignedAt")
 
 # Company Permission Check Schema
-class CompanyPermissionCheck(BaseModel):
+class CompanyPermissionCheck(BaseCamelModel):
     """Schema for checking company permissions"""
-    model_config = SCHEMA_CONFIG
     
     permission: str = Field(..., description="Permission to check")
     company_id: str = Field(..., alias="companyId", description="Company ID")
     user_id: Optional[str] = Field(None, alias="userId", description="User ID to check (defaults to current user)")
 
-class CompanyPermissionCheckResponse(BaseModel):
+class CompanyPermissionCheckResponse(BaseCamelModel):
     """Response for company permission check"""
-    model_config = SCHEMA_CONFIG
     
     has_permission: bool = Field(..., alias="hasPermission")
     user_id: str = Field(..., alias="userId")
     company_id: str = Field(..., alias="companyId")
     permission: str
     roles: List[str] = Field(default_factory=list)
+
+# Response Schemas
+class CompanyRoleDeleteResponse(BaseCamelModel):
+    """Response schema for deleting company role"""
+    message: str
+
+class CompanyRoleAssignResponse(BaseCamelModel):
+    """Response schema for assigning company role"""
+    message: str
+    assignment_id: str = Field(..., alias="assignmentId")
+
+class CompanyRoleRemoveResponse(BaseCamelModel):
+    """Response schema for removing company role"""
+    message: str
 
 # Default Company Role Presets
 DEFAULT_COMPANY_ROLES = {
@@ -313,3 +320,4 @@ DEFAULT_COMPANY_ROLES = {
         "is_system": True
     }
 }
+

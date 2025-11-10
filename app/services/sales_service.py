@@ -2,7 +2,7 @@ from typing import List, Optional
 from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy import select
-from app.core.database import get_sessionmaker
+from app.core.database import get_db_session
 from app.models.sales_model import Sale as SaleModel
 from app.schemas.sales_schema import Sale as SaleSchema, SaleCreate, SaleUpdate
 
@@ -10,245 +10,179 @@ from app.schemas.sales_schema import Sale as SaleSchema, SaleCreate, SaleUpdate
 class SalesService:
     async def get_all(self, company_id: str) -> List[SaleSchema]:
         try:
-            Session = get_sessionmaker()
-            async with Session() as session:
-                result = await session.execute(
-                    select(SaleModel).where(SaleModel.company_id == company_id)
-                )
-                sales = result.scalars().all()
-                return [SaleSchema(**s.to_dict()) for s in sales]
+            session = get_db_session()
+            result = await session.execute(
+                select(SaleModel).where(SaleModel.company_id == company_id)
+            )
+            sales = result.scalars().all()
+            return [SaleSchema(**s.to_dict()) for s in sales]
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving sales: {str(e)}")
 
     async def get_by_id(self, sale_id: int, company_id: str) -> Optional[SaleSchema]:
         try:
-            Session = get_sessionmaker()
-            async with Session() as session:
-                result = await session.execute(
-                    select(SaleModel).where(
-                        SaleModel.id == sale_id,
-                        SaleModel.company_id == company_id,
-                    )
+            session = get_db_session()
+            result = await session.execute(
+                select(SaleModel).where(
+                    SaleModel.id == sale_id,
+                    SaleModel.company_id == company_id,
                 )
-                sale = result.scalar_one_or_none()
-                return SaleSchema(**sale.to_dict()) if sale else None
+            )
+            sale = result.scalar_one_or_none()
+            return SaleSchema(**sale.to_dict()) if sale else None
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving sale: {str(e)}")
 
     async def create(self, company_id: str, payload: SaleCreate) -> int:
         try:
-            Session = get_sessionmaker()
-            async with Session() as session:
-                sale = SaleModel(
-                    company_id=company_id,
-                    reference=payload.reference,
-                    date=payload.date,
-                    client_id=payload.client_id,
-                    client_name=payload.client_name,
-                    seller_id=payload.seller_id,
-                    subtotal=payload.subtotal,
-                    discount=payload.discount,
-                    tva_rate=payload.tva_rate,
-                    tva_amount=payload.tva_amount,
-                    total=payload.total,
-                    payment_status=payload.payment_status.value,
-                    payment_method=payload.payment_method.value if payload.payment_method else None,
-                    amount_paid=payload.amount_paid,
-                    payment_reference=payload.payment_reference,
-                    notes=payload.notes,
-                    print_after_creation=payload.print_after_creation,
-                )
-                session.add(sale)
-                await session.commit()
-                await session.refresh(sale)
-                return sale.id
+            session = get_db_session()
+            sale = SaleModel(
+                company_id=company_id,
+                reference=payload.reference,
+                date=payload.date,
+                client_id=payload.client_id,
+                client_name=payload.client_name,
+                seller_id=payload.seller_id,
+                subtotal=payload.subtotal,
+                discount=payload.discount,
+                tva_rate=payload.tva_rate,
+                tva_amount=payload.tva_amount,
+                total=payload.total,
+                payment_status=payload.payment_status.value,
+                payment_method=payload.payment_method.value if payload.payment_method else None,
+                amount_paid=payload.amount_paid,
+                payment_reference=payload.payment_reference,
+                notes=payload.notes,
+                print_after_creation=payload.print_after_creation,
+            )
+            session.add(sale)
+            await session.commit()
+            await session.refresh(sale)
+            return sale.id
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating sale: {str(e)}")
 
     async def update(self, sale_id: int, company_id: str, payload: SaleUpdate) -> bool:
         try:
-            Session = get_sessionmaker()
-            async with Session() as session:
-                result = await session.execute(
-                    select(SaleModel).where(
-                        SaleModel.id == sale_id,
-                        SaleModel.company_id == company_id,
-                    )
+            session = get_db_session()
+            result = await session.execute(
+                select(SaleModel).where(
+                    SaleModel.id == sale_id,
+                    SaleModel.company_id == company_id,
                 )
-                sale = result.scalar_one_or_none()
-                if not sale:
-                    return False
-                for field, value in payload.model_dump(exclude_unset=True).items():
-                    if field == 'payment_status' and value is not None:
-                        setattr(sale, 'payment_status', value.value)
-                    elif field == 'payment_method' and value is not None:
-                        setattr(sale, 'payment_method', value.value)
-                    else:
-                        setattr(sale, field, value)
-                sale.updated_at = datetime.now()
-                await session.commit()
-                return True
+            )
+            sale = result.scalar_one_or_none()
+            if not sale:
+                return False
+            for field, value in payload.model_dump(exclude_unset=True).items():
+                if field == 'payment_status' and value is not None:
+                    setattr(sale, 'payment_status', value.value)
+                elif field == 'payment_method' and value is not None:
+                    setattr(sale, 'payment_method', value.value)
+                else:
+                    setattr(sale, field, value)
+            sale.updated_at = datetime.now()
+            await session.commit()
+            return True
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating sale: {str(e)}")
 
     async def delete(self, sale_id: int, company_id: str) -> bool:
         try:
-            Session = get_sessionmaker()
-            async with Session() as session:
-                result = await session.execute(
-                    select(SaleModel).where(
-                        SaleModel.id == sale_id,
-                        SaleModel.company_id == company_id,
-                    )
+            session = get_db_session()
+            result = await session.execute(
+                select(SaleModel).where(
+                    SaleModel.id == sale_id,
+                    SaleModel.company_id == company_id,
                 )
-                sale = result.scalar_one_or_none()
-                if not sale:
-                    return False
-                await session.delete(sale)
-                await session.commit()
-                return True
+            )
+            sale = result.scalar_one_or_none()
+            if not sale:
+                return False
+            await session.delete(sale)
+            await session.commit()
+            return True
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error deleting sale: {str(e)}")
 
     async def generate_sale_reference(self, company_id: str) -> str:
         """Generate a unique sale reference like VNT-YYYY-0001 scoped to company."""
         try:
-            Session = get_sessionmaker()
-            async with Session() as session:
-                year = datetime.utcnow().year
-                prefix = f"VNT-{year}-"
-                result = await session.execute(
-                    select(SaleModel.reference).where(
-                        SaleModel.company_id == company_id,
-                        SaleModel.reference.like(f"{prefix}%")
-                    )
+            session = get_db_session()
+            year = datetime.utcnow().year
+            prefix = f"VNT-{year}-"
+            result = await session.execute(
+                select(SaleModel.reference).where(
+                    SaleModel.company_id == company_id,
+                    SaleModel.reference.like(f"{prefix}%")
                 )
-                refs = [row[0] for row in result.fetchall()]
-                existing = set(refs)
-                counter = 1
+            )
+            refs = [row[0] for row in result.fetchall()]
+            existing = set(refs)
+            counter = 1
+            ref = f"{prefix}{counter:04d}"
+            while ref in existing:
+                counter += 1
                 ref = f"{prefix}{counter:04d}"
-                while ref in existing:
-                    counter += 1
-                    ref = f"{prefix}{counter:04d}"
-                return ref
+            return ref
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error generating sale reference: {str(e)}")
 
     async def calculate_sale_profit(self, sale_id: int, company_id: str) -> dict:
         """Calculate profit for a sale based on product costs and sale prices"""
         try:
-            Session = get_sessionmaker()
-            async with Session() as session:
-                # Get the sale with items
-                result = await session.execute(
-                    select(SaleModel).where(
-                        SaleModel.id == sale_id,
-                        SaleModel.company_id == company_id
-                    )
+            session = get_db_session()
+            # Get the sale with items
+            result = await session.execute(
+                select(SaleModel).where(
+                    SaleModel.id == sale_id,
+                    SaleModel.company_id == company_id
                 )
-                sale = result.scalar_one_or_none()
-                if not sale:
-                    raise HTTPException(status_code=404, detail="Sale not found")
-                
-                # Import here to avoid circular imports
-                from app.models.product_model import Product as ProductModel
-                
-                total_cost = 0
-                total_profit = 0
-                items_profit = []
-                
-                # Calculate profit for each item
-                for item in sale.items:
-                    # Get product cost
-                    product_result = await session.execute(
-                        select(ProductModel).where(ProductModel.id == item.item_id)
-                    )
-                    product = product_result.scalar_one_or_none()
-                    
-                    if product:
-                        item_cost = product.buy_price * item.quantity
-                        item_profit = item.total - item_cost
-                        total_cost += item_cost
-                        total_profit += item_profit
-                        
-                        items_profit.append({
-                            "item": {
-                                "itemId": item.item_id,
-                                "itemName": item.item_name,
-                                "quantity": item.quantity
-                            },
-                            "cost": item_cost,
-                            "profit": item_profit,
-                            "margin": (item_profit / item.total * 100) if item.total > 0 else 0
-                        })
-                
-                average_margin = (total_profit / sale.total * 100) if sale.total > 0 else 0
-                
-                return {
-                    "totalCost": total_cost,
-                    "totalProfit": total_profit,
-                    "averageMargin": average_margin,
-                    "items": items_profit
-                }
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error calculating sale profit: {str(e)}")
-
-    async def calculate_sale_profit(self, sale_id: int, company_id: str) -> dict:
-        """Calculate profit for a sale based on product costs and sale prices"""
-        try:
-            Session = get_sessionmaker()
-            async with Session() as session:
-                # Get the sale with items
-                result = await session.execute(
-                    select(SaleModel).where(
-                        SaleModel.id == sale_id,
-                        SaleModel.company_id == company_id
-                    )
+            )
+            sale = result.scalar_one_or_none()
+            if not sale:
+                raise HTTPException(status_code=404, detail="Sale not found")
+            
+            # Import here to avoid circular imports
+            from app.models.product_model import Product as ProductModel
+            
+            total_cost = 0
+            total_profit = 0
+            items_profit = []
+            
+            # Calculate profit for each item
+            for item in sale.items:
+                # Get product cost
+                product_result = await session.execute(
+                    select(ProductModel).where(ProductModel.id == item.item_id)
                 )
-                sale = result.scalar_one_or_none()
-                if not sale:
-                    raise HTTPException(status_code=404, detail="Sale not found")
+                product = product_result.scalar_one_or_none()
                 
-                # Import here to avoid circular imports
-                from app.models.product_model import Product as ProductModel
-                
-                total_cost = 0
-                total_profit = 0
-                items_profit = []
-                
-                # Calculate profit for each item
-                for item in sale.items:
-                    # Get product cost
-                    product_result = await session.execute(
-                        select(ProductModel).where(ProductModel.id == item.item_id)
-                    )
-                    product = product_result.scalar_one_or_none()
+                if product:
+                    item_cost = product.buy_price * item.quantity
+                    item_profit = item.total - item_cost
+                    total_cost += item_cost
+                    total_profit += item_profit
                     
-                    if product:
-                        item_cost = product.buy_price * item.quantity
-                        item_profit = item.total - item_cost
-                        total_cost += item_cost
-                        total_profit += item_profit
-                        
-                        items_profit.append({
-                            "item": {
-                                "itemId": item.item_id,
-                                "itemName": item.item_name,
-                                "quantity": item.quantity
-                            },
-                            "cost": item_cost,
-                            "profit": item_profit,
-                            "margin": (item_profit / item.total * 100) if item.total > 0 else 0
-                        })
-                
-                average_margin = (total_profit / sale.total * 100) if sale.total > 0 else 0
-                
-                return {
-                    "totalCost": total_cost,
-                    "totalProfit": total_profit,
-                    "averageMargin": average_margin,
-                    "items": items_profit
-                }
+                    items_profit.append({
+                        "item": {
+                            "itemId": item.item_id,
+                            "itemName": item.item_name,
+                            "quantity": item.quantity
+                        },
+                        "cost": item_cost,
+                        "profit": item_profit,
+                        "margin": (item_profit / item.total * 100) if item.total > 0 else 0
+                    })
+            
+            average_margin = (total_profit / sale.total * 100) if sale.total > 0 else 0
+            
+            return {
+                "totalCost": total_cost,
+                "totalProfit": total_profit,
+                "averageMargin": average_margin,
+                "items": items_profit
+            }
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error calculating sale profit: {str(e)}")
 

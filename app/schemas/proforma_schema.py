@@ -1,12 +1,11 @@
-from pydantic import BaseModel, Field
+from app.utils.casing import BaseCamelModel
+from pydantic import Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from . import SCHEMA_CONFIG
 
 # Proforma Item Schema
-class ProformaItem(BaseModel):
+class ProformaItem(BaseCamelModel):
     """Proforma item schema"""
-    model_config = SCHEMA_CONFIG
     
     item_id: str = Field(..., alias="itemId")
     item_name: str = Field(..., min_length=1, max_length=255, alias="itemName")
@@ -18,9 +17,8 @@ class ProformaItem(BaseModel):
     unit: Optional[str] = Field(None, max_length=50)
 
 # Proforma Client Schema
-class ProformaClient(BaseModel):
+class ProformaClient(BaseCamelModel):
     """Proforma client schema"""
-    model_config = SCHEMA_CONFIG
     
     name: str = Field(..., min_length=1, max_length=255)
     email: Optional[str] = None
@@ -29,9 +27,8 @@ class ProformaClient(BaseModel):
     tax_id: Optional[str] = Field(None, alias="taxId")
 
 # Proforma Schemas
-class ProformaBase(BaseModel):
+class ProformaBase(BaseCamelModel):
     """Base proforma schema"""
-    model_config = SCHEMA_CONFIG
     
     number: str = Field(..., min_length=1, max_length=100)
     date: datetime
@@ -45,14 +42,12 @@ class ProformaBase(BaseModel):
 
 class ProformaCreate(ProformaBase):
     """Schema for creating a proforma"""
-    model_config = SCHEMA_CONFIG
     
     company_id: str = Field(..., alias="companyId")
     created_by: int = Field(..., alias="createdBy")
 
-class ProformaUpdate(BaseModel):
+class ProformaUpdate(BaseCamelModel):
     """Schema for updating a proforma"""
-    model_config = SCHEMA_CONFIG
     
     number: Optional[str] = Field(None, min_length=1, max_length=100)
     date: Optional[datetime] = None
@@ -66,7 +61,6 @@ class ProformaUpdate(BaseModel):
 
 class Proforma(ProformaBase):
     """Complete proforma schema"""
-    model_config = SCHEMA_CONFIG
     
     id: str
     company_id: str = Field(..., alias="companyId")
@@ -76,9 +70,8 @@ class Proforma(ProformaBase):
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
 # Proforma Stats Schema
-class ProformaStats(BaseModel):
+class ProformaStats(BaseCamelModel):
     """Proforma statistics schema"""
-    model_config = SCHEMA_CONFIG
     
     total: int
     total_value: float = Field(..., alias="totalValue")
@@ -87,9 +80,8 @@ class ProformaStats(BaseModel):
     by_status: Dict[str, int] = Field(..., alias="byStatus")
 
 # Proforma Filter Schema
-class ProformaFilter(BaseModel):
+class ProformaFilter(BaseCamelModel):
     """Proforma filter schema"""
-    model_config = SCHEMA_CONFIG
     
     client_name: Optional[str] = Field(None, alias="clientName")
     status: Optional[str] = None

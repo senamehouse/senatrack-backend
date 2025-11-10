@@ -1,10 +1,11 @@
-from pydantic import BaseModel, Field
+from app.utils.casing import BaseCamelModel
+from pydantic import Field
 from datetime import datetime
 from typing import Optional, List
 
 
 # Product Category Schemas
-class ProductCategoryBase(BaseModel):
+class ProductCategoryBase(BaseCamelModel):
     """Base product category schema"""
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
@@ -15,16 +16,11 @@ class ProductCategoryCreate(ProductCategoryBase):
     pass
 
 
-class ProductCategoryUpdate(BaseModel):
+class ProductCategoryUpdate(BaseCamelModel):
     """Schema for updating a product category"""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     is_active: Optional[bool] = Field(None, alias="isActive")
-    
-    class Config:
-        populate_by_name = True
-        from_attributes = True
-        serialize_by_alias = True
 
 
 class ProductCategory(ProductCategoryBase):
@@ -34,14 +30,9 @@ class ProductCategory(ProductCategoryBase):
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
-    class Config:
-        populate_by_name = True
-        from_attributes = True
-        serialize_by_alias = True
-
 
 # Unit Schemas
-class UnitBase(BaseModel):
+class UnitBase(BaseCamelModel):
     """Base unit schema"""
     name: str = Field(..., min_length=1, max_length=100)
     abbreviation: str = Field(..., min_length=1, max_length=10)
@@ -53,17 +44,12 @@ class UnitCreate(UnitBase):
     pass
 
 
-class UnitUpdate(BaseModel):
+class UnitUpdate(BaseCamelModel):
     """Schema for updating a unit"""
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     abbreviation: Optional[str] = Field(None, min_length=1, max_length=10)
     description: Optional[str] = None
     is_active: Optional[bool] = Field(None, alias="isActive")
-    
-    class Config:
-        populate_by_name = True
-        from_attributes = True
-        serialize_by_alias = True
 
 
 class Unit(UnitBase):
@@ -73,14 +59,9 @@ class Unit(UnitBase):
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
-    class Config:
-        populate_by_name = True
-        from_attributes = True
-        serialize_by_alias = True
-
 
 # Product Schemas
-class ProductBase(BaseModel):
+class ProductBase(BaseCamelModel):
     """Base product schema"""
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
@@ -90,11 +71,6 @@ class ProductBase(BaseModel):
     stock: int = Field(..., ge=0)
     image_url: Optional[str] = Field(None, max_length=500, alias="imageUrl")
     
-    class Config:
-        populate_by_name = True
-        from_attributes = True
-        serialize_by_alias = True
-
 
 class ProductCreate(ProductBase):
     """Schema for creating a product"""
@@ -102,7 +78,7 @@ class ProductCreate(ProductBase):
     unit_id: str = Field(..., alias="unitId")
 
 
-class ProductUpdate(BaseModel):
+class ProductUpdate(BaseCamelModel):
     """Schema for updating a product"""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
@@ -114,11 +90,6 @@ class ProductUpdate(BaseModel):
     category_id: Optional[str] = Field(None, alias="categoryId")
     unit_id: Optional[str] = Field(None, alias="unitId")
     is_active: Optional[bool] = Field(None, alias="isActive")
-    
-    class Config:
-        populate_by_name = True
-        from_attributes = True
-        serialize_by_alias = True
 
 
 class Product(ProductBase):
@@ -130,9 +101,6 @@ class Product(ProductBase):
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
-    class Config:
-        from_attributes = True
-
 
 class ProductWithDetails(Product):
     """Schema for product with related data"""
@@ -141,23 +109,23 @@ class ProductWithDetails(Product):
 
 
 # Bulk operations schemas
-class BulkProductCreate(BaseModel):
+class BulkProductCreate(BaseCamelModel):
     """Schema for bulk product creation"""
     products: List[ProductCreate]
 
 
-class BulkProductCategoryCreate(BaseModel):
+class BulkProductCategoryCreate(BaseCamelModel):
     """Schema for bulk product category creation"""
     categories: List[ProductCategoryCreate]
 
 
-class BulkUnitCreate(BaseModel):
+class BulkUnitCreate(BaseCamelModel):
     """Schema for bulk unit creation"""
     units: List[UnitCreate]
 
 
 # Statistics schemas
-class ProductStats(BaseModel):
+class ProductStats(BaseCamelModel):
     """Schema for product statistics"""
     total: int
     active: int
@@ -167,14 +135,14 @@ class ProductStats(BaseModel):
     average_price: float
 
 
-class ProductCategoryStats(BaseModel):
+class ProductCategoryStats(BaseCamelModel):
     """Schema for product category statistics"""
     total: int
     active: int
     products_count: int
 
 
-class UnitStats(BaseModel):
+class UnitStats(BaseCamelModel):
     """Schema for unit statistics"""
     total: int
     active: int

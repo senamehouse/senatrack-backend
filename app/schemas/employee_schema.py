@@ -1,11 +1,10 @@
-from pydantic import BaseModel, Field
+from app.utils.casing import BaseCamelModel
+from pydantic import Field
 from datetime import datetime
 from typing import Optional
-from . import SCHEMA_CONFIG
 
 
-class EmployeeBase(BaseModel):
-    model_config = SCHEMA_CONFIG
+class EmployeeBase(BaseCamelModel):
 
     employee_number: Optional[str] = Field(None, max_length=50, alias="employeeNumber")
     first_name: str = Field(..., min_length=1, max_length=100, alias="firstName")
@@ -23,8 +22,7 @@ class EmployeeCreate(EmployeeBase):
     pass
 
 
-class EmployeeUpdate(BaseModel):
-    model_config = SCHEMA_CONFIG
+class EmployeeUpdate(BaseCamelModel):
 
     employee_number: Optional[str] = Field(None, max_length=50, alias="employeeNumber")
     first_name: Optional[str] = Field(None, min_length=1, max_length=100, alias="firstName")
@@ -40,8 +38,6 @@ class EmployeeUpdate(BaseModel):
 
 
 class Employee(EmployeeBase):
-    model_config = SCHEMA_CONFIG
-
     id: str
     company_id: Optional[str] = Field(None, alias="companyId")
     is_active: bool = Field(True, alias="isActive")

@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user
+from app.core.database import get_async_db
 from app.schemas.user_schema import User
 from app.schemas.user_role_schema import (
     UserRole, UserRoleCreate, UserRoleUpdate, UserRoleAssignmentCreate,
@@ -14,6 +16,7 @@ user_role_service = UserRoleService()
 @router.post("/", response_model=UserRole, status_code=status.HTTP_201_CREATED)
 async def create_user_role(
     role_data: UserRoleCreate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Create a new platform role (admin only)"""
@@ -22,6 +25,7 @@ async def create_user_role(
 
 @router.get("/", response_model=List[UserRole])
 async def get_all_user_roles(
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get all platform roles"""
@@ -29,6 +33,7 @@ async def get_all_user_roles(
 
 @router.get("/presets", response_model=List[UserRole])
 async def get_preset_roles(
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get preset platform roles"""
@@ -38,6 +43,7 @@ async def get_preset_roles(
 @router.get("/{role_id}", response_model=UserRole)
 async def get_user_role(
     role_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get a platform role by ID"""
@@ -50,6 +56,7 @@ async def get_user_role(
 async def update_user_role(
     role_id: str,
     role_data: UserRoleUpdate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Update a platform role (admin only)"""
@@ -59,6 +66,7 @@ async def update_user_role(
 @router.delete("/{role_id}")
 async def delete_user_role(
     role_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Delete a platform role (admin only)"""
@@ -72,6 +80,7 @@ async def delete_user_role(
 async def assign_role_to_user(
     role_id: str,
     assignment_data: UserRoleAssignmentCreate,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Assign a platform role to a user (admin only)"""
@@ -87,6 +96,7 @@ async def assign_role_to_user(
 async def remove_role_from_user(
     role_id: str,
     user_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Remove a platform role from a user (admin only)"""
@@ -99,6 +109,7 @@ async def remove_role_from_user(
 @router.get("/user/{user_id}/roles", response_model=List[UserRole])
 async def get_user_roles(
     user_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get all roles assigned to a user"""
@@ -107,6 +118,7 @@ async def get_user_roles(
 @router.get("/user/{user_id}/permissions", response_model=List[str])
 async def get_user_permissions(
     user_id: str,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get all permissions for a user"""
@@ -115,6 +127,7 @@ async def get_user_permissions(
 @router.post("/check-permission", response_model=PermissionCheckResponse)
 async def check_permission(
     permission_data: PermissionCheck,
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Check if a user has a specific permission"""
@@ -134,8 +147,10 @@ async def check_permission(
 
 @router.post("/create-presets", response_model=List[UserRole])
 async def create_default_presets(
+    session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Create default platform role presets (admin only)"""
     # TODO: Add admin permission check
     return await user_role_service.create_default_presets()
+

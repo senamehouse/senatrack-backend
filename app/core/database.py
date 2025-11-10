@@ -2,12 +2,27 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import text
 from typing import AsyncGenerator, Optional
+from contextvars import ContextVar
 from app.core.settings import settings
 
 
 # Async SQLAlchemy Base
 class Base(DeclarativeBase):
     pass
+
+# Context variable to store the current database session per request
+_db_session: ContextVar[Optional[AsyncSession]] = ContextVar('db_session', default=None)
+
+def get_db_session() -> AsyncSession:
+    """Get the current database session from context variable"""
+    session = _db_session.get()
+    if session is None:
+        raise RuntimeError("Database session not set in context. Ensure get_async_db dependency is used in route handler.")
+    return session
+
+def set_db_session(session: AsyncSession) -> None:
+    """Set the database session in context variable"""
+    _db_session.set(session)
 
 # Engines per mode
 def _resolve_local_url() -> str:
@@ -20,8 +35,8 @@ local_async_engine = create_async_engine(
     _resolve_local_url(),
     echo=False,
     future=True,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=20,
+    max_overflow=40,
     pool_pre_ping=True,
     pool_recycle=3600,
 )
@@ -33,8 +48,8 @@ if remote_url:
         remote_url,
         echo=False,
         future=True,
-        pool_size=5,  # Reduced pool size
-        max_overflow=10,  # Reduced max overflow
+        pool_size=20,
+        max_overflow=40,
         pool_pre_ping=True,
         pool_recycle=1800,  # Reduced recycle time (30 minutes)
         pool_timeout=30,  # Add timeout
@@ -101,11 +116,7 @@ async def init_database():
         raise ValueError(f"Invalid DATABASE_MODE: {mode}. Must be 'online', 'offline', or 'both'")
 
 async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
-    """Provide a session according to DATABASE_MODE.
-    - online: Use remote PostgreSQL database
-    - offline: Use local SQLite database
-    - offline: Use local SQLite
-    """
+    """Provide a session according to DATABASE_MODE and set it in context"""
     mode = (settings.DATABASE_MODE or "offline").lower()
     
     if mode == "online":
@@ -113,18 +124,27 @@ async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
         if RemoteAsyncSession is None:
             raise RuntimeError("REMOTE_DB_URL not configured for online mode")
         async with RemoteAsyncSession() as session:
-            yield session
+            set_db_session(session)  # Set in context
+            try:
+                yield session
+            finally:
+                _db_session.set(None)  # Clear after request
     elif mode == "offline":
         # Offline mode: Use local SQLite
         async with LocalAsyncSession() as session:
-            yield session
-    elif mode == "offline":
-        # Already handled above
-        pass
+            set_db_session(session)  # Set in context
+            try:
+                yield session
+            finally:
+                _db_session.set(None)  # Clear after request
     else:
         # Default to offline mode
         async with LocalAsyncSession() as session:
-            yield session
+            set_db_session(session)  # Set in context
+            try:
+                yield session
+            finally:
+                _db_session.set(None)  # Clear after request
 
 
 async def get_local_async_db() -> AsyncGenerator[AsyncSession, None]:

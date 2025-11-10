@@ -5,13 +5,14 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from fastapi import HTTPException, status
 from sqlalchemy import select, update
-from app.core.database import get_sessionmaker
+from app.core.database import get_db_session
 from app.models.auth_model import RefreshToken
 from app.core.settings import settings
 from app.schemas.user_schema import UserRegister, UserLogin, PasswordChange
 from app.schemas.auth_schema import Token, TokenData
-from app.schemas.user_schema import User as UserSchema, UserInternal
+from app.schemas.user_schema import User as UserSchema, UserInternal, UserProfileResponse
 from app.services.user_service import UserService
+from app.services.company_service import CompanyService
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -171,62 +172,58 @@ class AuthService:
     async def create_refresh_token_db(self, user_id: str, token: str, expires_at: datetime) -> int:
         """Create a refresh token in database"""
         try:
-            Session = get_sessionmaker()
-            async with Session() as session:
-                refresh_token = RefreshToken(
-                    user_id=user_id,
-                    token=token,
-                    expires_at=expires_at
-                )
-                session.add(refresh_token)
-                await session.commit()
-                await session.refresh(refresh_token)
-                return refresh_token.id
+            session = get_db_session()
+            refresh_token = RefreshToken(
+                user_id=user_id,
+                token=token,
+                expires_at=expires_at
+            )
+            session.add(refresh_token)
+            await session.commit()
+            await session.refresh(refresh_token)
+            return refresh_token.id
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating refresh token: {str(e)}")
     
     async def get_refresh_token(self, token: str) -> Optional[RefreshToken]:
         """Get a refresh token by token string"""
         try:
-            Session = get_sessionmaker()
-            async with Session() as session:
-                result = await session.execute(
-                    select(RefreshToken).where(
-                        RefreshToken.token == token,
-                        RefreshToken.is_revoked == False,
-                        RefreshToken.expires_at > datetime.now()
-                    )
+            session = get_db_session()
+            result = await session.execute(
+                select(RefreshToken).where(
+                    RefreshToken.token == token,
+                    RefreshToken.is_revoked == False,
+                    RefreshToken.expires_at > datetime.now()
                 )
-                return result.scalar_one_or_none()
+            )
+            return result.scalar_one_or_none()
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving refresh token: {str(e)}")
     
     async def revoke_refresh_token(self, token: str):
         """Revoke a refresh token"""
         try:
-            Session = get_sessionmaker()
-            async with Session() as session:
-                result = await session.execute(
-                    select(RefreshToken).where(RefreshToken.token == token)
-                )
-                refresh_token = result.scalar_one_or_none()
-                if refresh_token:
-                    refresh_token.is_revoked = True
-                    await session.commit()
+            session = get_db_session()
+            result = await session.execute(
+                select(RefreshToken).where(RefreshToken.token == token)
+            )
+            refresh_token = result.scalar_one_or_none()
+            if refresh_token:
+                refresh_token.is_revoked = True
+                await session.commit()
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error revoking refresh token: {str(e)}")
     
     async def revoke_all_user_tokens(self, user_id: str):
         """Revoke all refresh tokens for a user"""
         try:
-            Session = get_sessionmaker()
-            async with Session() as session:
-                await session.execute(
-                    update(RefreshToken)
-                    .where(RefreshToken.user_id == user_id)
-                    .values(is_revoked=True)
-                )
-                await session.commit()
+            session = get_db_session()
+            await session.execute(
+                update(RefreshToken)
+                .where(RefreshToken.user_id == user_id)
+                .values(is_revoked=True)
+            )
+            await session.commit()
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error revoking user tokens: {str(e)}")
     
@@ -354,3 +351,45 @@ class AuthService:
         user_dict['platformPermissions'] = platform_permissions
         
         return UserSchema(**user_dict)
+    
+    async def get_user_profile(
+        self,
+        user: UserSchema,
+        access_token: str,
+        refresh_token: Optional[str] = None
+    ) -> UserProfileResponse:
+        """Get user profile with tokens and company data"""
+        from app.services.user_service import UserService
+        
+        user_service = UserService()
+        company_service = CompanyService()
+        
+        # If user doesn't have a current company, set the first available one
+        current_user = user
+        if not current_user.current_company_id:
+            companies = await company_service.get_user_companies(current_user.id)
+            if companies and len(companies) > 0:
+                # Set the first company as current
+                await user_service.update_user(current_user.id, {"current_company_id": companies[0].id})
+                # Reload user with updated current_company_id
+                updated_user = await user_service.get_user_by_id(current_user.id)
+                if updated_user:
+                    current_user = updated_user
+        
+        # Get current company data if exists
+        current_company = None
+        if current_user.current_company_id:
+            company = await company_service.get_company_by_id(current_user.current_company_id)
+            if company:
+                # Company service returns Company schema, convert to dict
+                current_company = company.model_dump(by_alias=True)
+        
+        # Build response
+        user_dict = current_user.model_dump(by_alias=True)
+        return UserProfileResponse(
+            **user_dict,
+            access_token=access_token,
+            refresh_token=refresh_token or "",
+            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            current_company=current_company
+        )

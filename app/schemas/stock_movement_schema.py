@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from app.utils.casing import BaseCamelModel
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -10,7 +10,7 @@ class MovementType(str, Enum):
     ADJUSTMENT = "adjustment"
 
 
-class StockMovementItemBase(BaseModel):
+class StockMovementItemBase(BaseCamelModel):
     product_id: str
     product_name: str
     quantity: int
@@ -27,11 +27,8 @@ class StockMovementItem(StockMovementItemBase):
     id: str
     stock_movement_id: str
 
-    class Config:
-        from_attributes = True
 
-
-class StockMovementBase(BaseModel):
+class StockMovementBase(BaseCamelModel):
     date: datetime
     movement_type: MovementType
     label: str
@@ -48,7 +45,7 @@ class StockMovementCreate(StockMovementBase):
     items: List[StockMovementItemCreate] = []
 
 
-class StockMovementUpdate(BaseModel):
+class StockMovementUpdate(BaseCamelModel):
     date: Optional[datetime] = None
     movement_type: Optional[MovementType] = None
     label: Optional[str] = None
@@ -67,6 +64,3 @@ class StockMovement(StockMovementBase):
     created_at: datetime
     updated_at: datetime
     items: List[StockMovementItem] = []
-
-    class Config:
-        from_attributes = True

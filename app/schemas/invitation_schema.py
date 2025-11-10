@@ -1,12 +1,11 @@
-from pydantic import BaseModel, Field, EmailStr
+from app.utils.casing import BaseCamelModel
+from pydantic import Field, EmailStr
 from typing import Optional
 from datetime import datetime
-from . import SCHEMA_CONFIG
 
 # Company Invitation Schemas
-class CompanyInvitationBase(BaseModel):
+class CompanyInvitationBase(BaseCamelModel):
     """Base company invitation schema"""
-    model_config = SCHEMA_CONFIG
     
     company_id: str = Field(..., alias="companyId")
     email: EmailStr
@@ -16,9 +15,8 @@ class CompanyInvitationBase(BaseModel):
     token: str = Field(..., min_length=1, max_length=255)
     status: str = Field(default="pending", pattern="^(pending|accepted|declined|expired)$")
 
-class CompanyInvitationCreate(BaseModel):
+class CompanyInvitationCreate(BaseCamelModel):
     """Schema for creating a company invitation"""
-    model_config = SCHEMA_CONFIG
     
     company_id: str = Field(..., alias="companyId")
     email: EmailStr
@@ -26,16 +24,14 @@ class CompanyInvitationCreate(BaseModel):
     invited_by: int = Field(..., alias="invitedBy")
     message: Optional[str] = None
 
-class CompanyInvitationUpdate(BaseModel):
+class CompanyInvitationUpdate(BaseCamelModel):
     """Schema for updating a company invitation"""
-    model_config = SCHEMA_CONFIG
     
     status: Optional[str] = Field(None, pattern="^(pending|accepted|declined|expired)$")
     message: Optional[str] = None
 
 class CompanyInvitation(CompanyInvitationBase):
     """Complete company invitation schema"""
-    model_config = SCHEMA_CONFIG
     
     id: str
     invited_at: datetime = Field(..., alias="invitedAt")
@@ -49,24 +45,25 @@ class CompanyInvitation(CompanyInvitationBase):
 # Invitation with Company Details Schema
 class InvitationWithCompany(CompanyInvitation):
     """Company invitation with company and inviter details"""
-    model_config = SCHEMA_CONFIG
     
     company_name: str = Field(..., alias="companyName")
     invited_by_name: str = Field(..., alias="invitedByName")
 
 # Invitation Response Schemas
-class InvitationResponse(BaseModel):
+class InvitationResponse(BaseCamelModel):
     """Response schema for invitation actions"""
-    model_config = SCHEMA_CONFIG
     
     success: bool
     message: str
     invitation: Optional[CompanyInvitation] = None
 
+class InvitationCancelResponse(BaseCamelModel):
+    """Response schema for canceling invitation"""
+    message: str
+
 # Invitation Stats Schema
-class InvitationStats(BaseModel):
+class InvitationStats(BaseCamelModel):
     """Invitation statistics schema"""
-    model_config = SCHEMA_CONFIG
     
     total: int
     pending: int
