@@ -1,4 +1,3 @@
-import logging
 from fastapi import APIRouter, HTTPException, Depends, status, Response, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,8 +12,6 @@ from app.core.database import get_async_db
 from app.core.settings import settings
 from app.utils.cookie_utils import set_auth_cookies
 from typing import Dict, Any, Optional
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 auth_service = AuthService()
@@ -48,14 +45,10 @@ async def login(
     session: AsyncSession = Depends(get_async_db)
 ):
     """Login user and get access token"""
-    logger.info(f"Login attempt for email: {login_data.email}")
     token_data = await auth_service.login_user(login_data)
-    logger.info(f"Login successful for email: {login_data.email}, token generated")
     
     # Set HTTP-only cookies
     user = await auth_service.get_current_user(token_data.access_token)
-    logger.info(f"Retrieved user for cookie setting - user_id: {user.id}, company_id: {user.current_company_id}")
-    
     set_auth_cookies(
         response=response,
         access_token=token_data.access_token,
@@ -64,7 +57,6 @@ async def login(
         request=request
     )
     
-    logger.info(f"Cookies set successfully for user: {user.id}")
     return token_data
 
 @router.post("/refresh", response_model=Token)
@@ -94,23 +86,14 @@ async def get_current_user_profile(
     # Get tokens from cookies
     access_token = request.cookies.get("session")
     refresh_token = request.cookies.get("refreshToken")
-    company_id = request.cookies.get("companyId")
-    
-    # Log all cookies received
-    all_cookies = request.cookies.keys()
-    logger.info(f"/auth/me called - cookies received: {list(all_cookies)}, has_session: {bool(access_token)}, has_refreshToken: {bool(refresh_token)}, has_companyId: {bool(company_id)}")
-    logger.info(f"Request URL: {request.url}, Request scheme: {request.url.scheme}")
-    logger.info(f"User ID from auth: {current_user.id if current_user else 'None'}")
     
     # If no tokens in cookies, this shouldn't happen but handle gracefully
     if not access_token:
-        logger.warning(f"/auth/me - No session cookie found. All cookies: {list(all_cookies)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated"
         )
     
-    logger.info(f"/auth/me - Successfully retrieved tokens from cookies for user: {current_user.id}")
     # Get user profile from service
     return await auth_service.get_user_profile(current_user, access_token, refresh_token)
 

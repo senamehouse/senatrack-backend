@@ -1,4 +1,3 @@
-import logging
 from fastapi import Depends, HTTPException, status, Request, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
@@ -7,8 +6,6 @@ from app.services.user_role_service import UserRoleService
 from app.services.company_role_service import CompanyRoleService
 from app.schemas.user_schema import User
 from app.core.settings import settings
-
-logger = logging.getLogger(__name__)
 
 # Security scheme
 security = HTTPBearer()
@@ -26,28 +23,16 @@ async def get_current_user(
     """Dependency to get current authenticated user - checks session cookie first, then Bearer token"""
     # Prefer session cookie
     session_token = request.cookies.get("session")
-    all_cookies = list(request.cookies.keys())
-    logger.debug(f"get_current_user - cookies: {all_cookies}, has_session: {bool(session_token)}")
-    
     if session_token:
         try:
-            user = await auth_service.get_current_user(session_token)
-            logger.debug(f"get_current_user - authenticated via session cookie, user_id: {user.id}")
-            return user
-        except HTTPException as e:
-            logger.warning(f"get_current_user - session cookie validation failed: {e.detail}")
+            return await auth_service.get_current_user(session_token)
+        except HTTPException:
             pass  # Fall through to Bearer token
     
     # Fallback to Bearer token
     if credentials and credentials.scheme.lower() == "bearer":
-        try:
-            user = await auth_service.get_current_user(credentials.credentials)
-            logger.debug(f"get_current_user - authenticated via Bearer token, user_id: {user.id}")
-            return user
-        except HTTPException as e:
-            logger.warning(f"get_current_user - Bearer token validation failed: {e.detail}")
+        return await auth_service.get_current_user(credentials.credentials)
     
-    logger.warning(f"get_current_user - No valid authentication found. Cookies: {all_cookies}, has_bearer: {bool(credentials)}")
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Not authenticated",

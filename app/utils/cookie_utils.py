@@ -1,10 +1,7 @@
 """Utility functions for setting HTTP cookies"""
-import logging
 from typing import Optional
 from fastapi import Response, Request
 from app.core.settings import settings
-
-logger = logging.getLogger(__name__)
 
 
 def set_auth_cookies(
@@ -20,11 +17,6 @@ def set_auth_cookies(
     if request:
         url = str(request.url)
         is_production = url.startswith("https://")
-        logger.info(f"Setting cookies - URL scheme: {url.split('://')[0]}, is_production: {is_production}")
-    else:
-        # Fallback: check if response headers indicate HTTPS
-        # This is a best-effort check
-        logger.warning("No request object provided, defaulting to secure=False for cookies")
     
     # For cross-domain cookies (frontend and backend on different domains),
     # we need samesite="none" with secure=True
@@ -34,8 +26,6 @@ def set_auth_cookies(
     
     max_age_session = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     max_age_refresh = settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
-    
-    logger.info(f"Setting auth cookies - secure: {is_production}, samesite: {samesite_value}, session_max_age: {max_age_session}, refresh_max_age: {max_age_refresh}")
     
     # Set session cookie
     response.set_cookie(
@@ -47,7 +37,6 @@ def set_auth_cookies(
         samesite=samesite_value,
         path="/"
     )
-    logger.debug(f"Set session cookie - httponly: True, secure: {is_production}, samesite: {samesite_value}")
     
     # Set refresh token cookie
     response.set_cookie(
@@ -59,7 +48,6 @@ def set_auth_cookies(
         samesite=samesite_value,
         path="/"
     )
-    logger.debug(f"Set refreshToken cookie - httponly: True, secure: {is_production}, samesite: {samesite_value}")
     
     # Set companyId cookie if provided
     if company_id:
@@ -72,7 +60,3 @@ def set_auth_cookies(
             samesite=samesite_value,
             path="/"
         )
-        logger.debug(f"Set companyId cookie - value: {company_id}, secure: {is_production}, samesite: {samesite_value}")
-    else:
-        logger.debug("No companyId provided, skipping companyId cookie")
-
