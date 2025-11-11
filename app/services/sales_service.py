@@ -172,6 +172,27 @@ class SalesService:
     async def create(self, company_id: str, payload: SaleCreate) -> str:
         try:
             session = get_db_session()
+            # Validate sufficient stock for product items before creating the sale
+            from app.models.product_model import Product as ProductModel
+            for item in payload.items:
+                item_type = getattr(item, "item_type", "product") or "product"
+                if item_type == "product":
+                    product_result = await session.execute(
+                        select(ProductModel).where(
+                            ProductModel.id == item.product_id,
+                            ProductModel.company_id == company_id
+                        )
+                    )
+                    product = product_result.scalar_one_or_none()
+                    if not product:
+                        raise HTTPException(status_code=400, detail=f"Product not found: {item.product_id}")
+                    current_stock = product.stock or 0
+                    if current_stock < item.quantity:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Insufficient stock for product '{product.name}' (available {current_stock}, requested {item.quantity})"
+                        )
+
             sale = SaleModel(
                 company_id=company_id,
                 reference=payload.reference,
@@ -213,6 +234,46 @@ class SalesService:
                 session.add(sale_item)
             await session.commit()
             
+            # Create stock movement (OUT) for product items in this sale
+            try:
+                from app.schemas.stock_movement_schema import (
+                    StockMovementCreate, StockMovementItemCreate, MovementType
+                )
+                from app.services.stock_movement_service import StockMovementService
+
+                out_items: list[StockMovementItemCreate] = []
+                for item in payload.items:
+                    # Only decrement stock for products
+                    if getattr(item, "item_type", "product") == "product":
+                        out_items.append(StockMovementItemCreate(
+                            product_id=item.product_id,
+                            product_name=item.product_name,
+                            quantity=item.quantity,
+                            unit_price=item.unit_price,
+                            total=item.total_price,
+                            unit=getattr(item, "unit", "") or ""
+                        ))
+
+                if out_items:
+                    stock_mvt_payload = StockMovementCreate(
+                        date=datetime.utcnow(),
+                        movement_type=MovementType.OUT,
+                        label="Vente",
+                        supplier_id=None,
+                        customer_id=payload.client_id,
+                        reason="Sale deduction",
+                        author=sale.seller_id or "system",
+                        details=None,
+                        document_reference=sale.reference,
+                        total_value=payload.total,
+                        items=out_items,
+                    )
+                    stock_svc = StockMovementService()
+                    await stock_svc.create(company_id, stock_mvt_payload)
+            except Exception:
+                # Do not fail the sale if movement creation fails
+                pass
+
             return sale.id
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating sale: {str(e)}")

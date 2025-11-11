@@ -64,6 +64,31 @@ class StockMovementService:
                     unit=item.unit,
                 ))
             await session.commit()
+
+            # Update product stock based on movement type
+            from app.models.product_model import Product as ProductModel
+            # OUT = decrement, IN = increment, ADJUSTMENT = apply delta (+/-)
+            for item in payload.items:
+                product_result = await session.execute(
+                    select(ProductModel).where(
+                        ProductModel.id == item.product_id,
+                        ProductModel.company_id == company_id
+                    )
+                )
+                product = product_result.scalar_one_or_none()
+                if not product:
+                    continue
+
+                if payload.movement_type.value == "out":
+                    product.stock = max(0, (product.stock or 0) - item.quantity)
+                elif payload.movement_type.value == "in":
+                    product.stock = (product.stock or 0) + item.quantity
+                elif payload.movement_type.value == "adjustment":
+                    product.stock = max(0, (product.stock or 0) + item.quantity)
+
+                product.updated_at = datetime.now()
+
+            await session.commit()
             return movement.id
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating stock movement: {str(e)}")
