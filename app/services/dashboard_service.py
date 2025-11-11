@@ -241,11 +241,12 @@ class DashboardService:
         total_products = total_result.scalar() or 0
 
         # Get low stock products (stock <= threshold and stock > 0)
+        # Use default threshold of 10 for low stock detection
         low_stock_result = await session.execute(
             select(ProductModel).where(
                 ProductModel.company_id == company_id,
                 ProductModel.is_active == True,
-                ProductModel.stock <= ProductModel.stock_alert_threshold,
+                ProductModel.stock <= 10,  # Default threshold
                 ProductModel.stock > 0
             )
         )

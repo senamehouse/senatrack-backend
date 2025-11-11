@@ -2,8 +2,10 @@ from typing import List, Optional
 from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 from app.core.database import get_db_session
 from app.models.sales_model import Sale as SaleModel
+from app.models.user_model import User as UserModel
 from app.schemas.sales_schema import Sale as SaleSchema, SaleCreate, SaleUpdate
 
 
@@ -11,11 +13,41 @@ class SalesService:
     async def get_all(self, company_id: str) -> List[SaleSchema]:
         try:
             session = get_db_session()
+            # Get all unique seller IDs from sales
             result = await session.execute(
+                select(SaleModel.seller_id).where(
+                    SaleModel.company_id == company_id,
+                    SaleModel.seller_id.isnot(None)
+                ).distinct()
+            )
+            seller_ids = [row[0] for row in result.fetchall() if row[0]]
+            
+            # Fetch all sellers in one query
+            sellers_dict = {}
+            if seller_ids:
+                sellers_result = await session.execute(
+                    select(UserModel).where(UserModel.id.in_(seller_ids))
+                )
+                sellers = sellers_result.scalars().all()
+                sellers_dict = {seller.id: seller.name for seller in sellers}
+            
+            # Get all sales
+            sales_result = await session.execute(
                 select(SaleModel).where(SaleModel.company_id == company_id)
             )
-            sales = result.scalars().all()
-            return [SaleSchema(**s.to_dict()) for s in sales]
+            sales = sales_result.scalars().all()
+            
+            # Build response with seller names
+            sales_data = []
+            for sale in sales:
+                sale_dict = sale.to_dict()
+                if sale.seller_id and sale.seller_id in sellers_dict:
+                    sale_dict["seller_name"] = sellers_dict[sale.seller_id]
+                else:
+                    sale_dict["seller_name"] = None
+                sales_data.append(SaleSchema(**sale_dict))
+            
+            return sales_data
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving sales: {str(e)}")
 
@@ -29,7 +61,21 @@ class SalesService:
                 )
             )
             sale = result.scalar_one_or_none()
-            return SaleSchema(**sale.to_dict()) if sale else None
+            if not sale:
+                return None
+            
+            # Get seller name if seller_id exists
+            sale_dict = sale.to_dict()
+            if sale.seller_id:
+                seller_result = await session.execute(
+                    select(UserModel).where(UserModel.id == sale.seller_id)
+                )
+                seller = seller_result.scalar_one_or_none()
+                sale_dict["seller_name"] = seller.name if seller else None
+            else:
+                sale_dict["seller_name"] = None
+            
+            return SaleSchema(**sale_dict)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving sale: {str(e)}")
 
@@ -40,8 +86,8 @@ class SalesService:
                 company_id=company_id,
                 reference=payload.reference,
                 date=payload.date,
-                client_id=payload.client_id,
-                client_name=payload.client_name,
+                client_id=payload.client_id if payload.client_id else None,
+                client_name=payload.client_name if payload.client_name else None,
                 seller_id=payload.seller_id,
                 subtotal=payload.subtotal,
                 discount=payload.discount,

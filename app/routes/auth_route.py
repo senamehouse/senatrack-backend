@@ -5,7 +5,8 @@ from app.services.auth_service import AuthService
 from app.schemas.auth_schema import Token, TokenRefresh
 from app.schemas.user_schema import (
     UserRegister, UserLogin, PasswordChange, 
-    User, UserUpdate, UserProfileResponse
+    User, UserUpdate, UserProfileResponse,
+    PasswordReset, PasswordResetConfirm
 )
 from app.core.dependencies import get_current_user, get_current_active_user
 from app.core.database import get_async_db
@@ -107,3 +108,22 @@ async def update_current_user_profile(
     from app.services.user_service import UserService
     user_service = UserService()
     return await user_service.update_user(current_user.id, profile_data)
+
+@router.post("/forgot-password")
+async def forgot_password(
+    password_reset: PasswordReset,
+    session: AsyncSession = Depends(get_async_db)
+):
+    """Request password reset"""
+    return await auth_service.request_password_reset(password_reset.email)
+
+@router.post("/reset-password")
+async def reset_password(
+    password_reset_confirm: PasswordResetConfirm,
+    session: AsyncSession = Depends(get_async_db)
+):
+    """Confirm password reset with token"""
+    return await auth_service.confirm_password_reset(
+        password_reset_confirm.token,
+        password_reset_confirm.new_password
+    )

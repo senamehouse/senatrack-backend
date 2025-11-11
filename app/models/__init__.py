@@ -1,6 +1,7 @@
 # Models package - SQLAlchemy models
 from app.models.user_model import User
 from app.models.auth_model import RefreshToken
+from app.models.password_reset_model import PasswordResetToken
 from app.models.sync_model import SyncLog
 from app.models.product_model import Product, ProductCategory, ProductUnit
 from app.models.activity_model import ActivityLog
@@ -24,7 +25,7 @@ from app.models.user_role_model import UserRole, UserRoleAssignment
 from app.models.company_role_model import UserCompanyRole, UserCompanyRoleAssignment
 
 __all__ = [
-    "User", "RefreshToken", "SyncLog",
+    "User", "RefreshToken", "PasswordResetToken", "SyncLog",
     "Product", "ProductCategory", "ProductUnit",
     "ActivityLog", "Supplier", "Client",
     "Company", "CompanyMember",

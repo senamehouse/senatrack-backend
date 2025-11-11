@@ -32,7 +32,9 @@ class Settings(BaseSettings):
     
     # Resend Config
     RESEND_API_KEY: str = ""
-
+    EMAIL_FROM: str = "no-reply@updates.ideogrow.com"
+    EMAIL_FROM_NAME: str = "SenaTrack"
+  
     # File Storage Config (uses DATABASE_MODE: online = S3, offline = local)
     LOCAL_FILES_PATH: str = os.getenv("LOCAL_FILES_PATH", "local_files")
     MAX_FILE_SIZE: int = int(os.getenv("MAX_FILE_SIZE", str(5 * 1024 * 1024)))

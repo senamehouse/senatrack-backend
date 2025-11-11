@@ -39,9 +39,10 @@ class SaleItem(SaleItemBase):
 class SaleBase(BaseCamelModel):
     reference: str
     date: datetime
-    client_id: Optional[int] = None
-    client_name: str
-    seller_id: Optional[int] = None
+    client_id: Optional[str] = None
+    client_name: Optional[str] = None
+    seller_id: Optional[str] = None
+    seller_name: Optional[str] = None
     subtotal: float
     discount: float = 0.0
     tva_rate: float = 0.0
@@ -82,5 +83,5 @@ class Sale(SaleBase):
     id: str
     company_id: str
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
     items: List[SaleItem] = []

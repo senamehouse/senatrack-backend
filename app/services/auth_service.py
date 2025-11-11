@@ -1,4 +1,5 @@
 import secrets
+import os
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from passlib.context import CryptContext
@@ -13,6 +14,8 @@ from app.schemas.auth_schema import Token, TokenData
 from app.schemas.user_schema import User as UserSchema, UserInternal, UserProfileResponse
 from app.services.user_service import UserService
 from app.services.company_service import CompanyService
+from app.services.email_service import email_service
+from app.utils.email_templates import get_app_config
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -313,6 +316,113 @@ class AuthService:
         await self.revoke_all_user_tokens(user_id)
         
         return {"message": "Password changed successfully"}
+    
+    async def request_password_reset(self, email: str) -> Dict[str, Any]:
+        """Request password reset - generates token and sends email (online) or returns token (offline)"""
+        from app.models.password_reset_model import PasswordResetToken
+        
+        # Get user by email
+        user = await self.user_service.get_user_by_email(email)
+        if not user:
+            # Don't reveal if user exists (security best practice)
+            return {"message": "If an account exists with this email, a reset link has been sent."}
+        
+        # Generate secure token
+        reset_token = secrets.token_urlsafe(32)
+        
+        # Create reset token record (expires in 1 hour)
+        session = get_db_session()
+        expires_at = datetime.utcnow() + timedelta(hours=1)
+        
+        # Revoke any existing unused tokens for this user
+        await session.execute(
+            update(PasswordResetToken)
+            .where(
+                PasswordResetToken.user_id == user.id,
+                PasswordResetToken.used == False
+            )
+            .values(used=True)
+        )
+        
+        # Create new token
+        reset_token_record = PasswordResetToken(
+            user_id=user.id,
+            email=user.email,
+            token=reset_token,
+            expires_at=expires_at
+        )
+        session.add(reset_token_record)
+        await session.commit()
+        
+        # Handle online vs offline mode
+        if settings.DATABASE_MODE == "online":
+            # Send email via email service
+            config = get_app_config()
+            reset_url = f"{config['app_url']}/reinitialiser-mot-de-passe/confirmer?token={reset_token}"
+            
+            try:
+                email_service.send_password_reset_email(
+                    to=user.email,
+                    reset_url=reset_url,
+                    app_name=config["app_name"]
+                )
+                return {"message": "Password reset email sent successfully"}
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+        else:
+            # Offline mode - return token for admin/user to use manually
+            return {
+                "message": "Password reset token generated (offline mode)",
+                "token": reset_token,  # Only in offline mode
+                "expires_at": expires_at.isoformat(),
+                "reset_url": f"/reinitialiser-mot-de-passe/confirmer?token={reset_token}"
+            }
+    
+    async def confirm_password_reset(self, token: str, new_password: str) -> Dict[str, str]:
+        """Confirm password reset with token"""
+        from app.models.password_reset_model import PasswordResetToken
+        
+        session = get_db_session()
+        
+        # Find valid token
+        result = await session.execute(
+            select(PasswordResetToken).where(
+                PasswordResetToken.token == token,
+                PasswordResetToken.used == False,
+                PasswordResetToken.expires_at > datetime.utcnow()
+            )
+        )
+        reset_token_record = result.scalar_one_or_none()
+        
+        if not reset_token_record:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired reset token"
+            )
+        
+        # Hash new password
+        new_hashed_password = self.get_password_hash(new_password)
+        
+        # Update user password
+        user_data = {"hashed_password": new_hashed_password}
+        success = await self.user_service.update_user(reset_token_record.user_id, user_data)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update password"
+            )
+        
+        # Mark token as used
+        reset_token_record.used = True
+        await session.commit()
+        
+        # Revoke all refresh tokens for security
+        await self.revoke_all_user_tokens(reset_token_record.user_id)
+        
+        return {"message": "Password reset successfully"}
     
     async def get_current_user(self, token: str) -> UserSchema:
         """Get current user from access token"""

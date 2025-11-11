@@ -75,7 +75,6 @@ class Product(Base):
     buy_price: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     unit_price: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     stock: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    stock_alert_threshold: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     
@@ -100,7 +99,6 @@ class Product(Base):
             "buy_price": self.buy_price,
             "unit_price": self.unit_price,
             "stock": self.stock,
-            "stock_alert_threshold": self.stock_alert_threshold,
             "image_url": self.image_url,
             "is_active": self.is_active,
             "category_id": self.category_id,

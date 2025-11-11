@@ -13,7 +13,8 @@ from datetime import datetime, timedelta
 import secrets
 import string
 import os
-import resend
+from app.services.email_service import email_service
+from app.utils.email_templates import get_app_config
 
 class InvitationService:
     """Service for company invitation-related operations"""
@@ -302,16 +303,14 @@ class InvitationService:
         invited_by_name: str,
         app_url: str = None
     ) -> Dict[str, Any]:
-        """Send invitation email via Resend"""
+        """Send invitation email via email service"""
         try:
-            if not settings.RESEND_API_KEY:
-                raise HTTPException(status_code=500, detail="Resend API key not configured")
+            # Get app config
+            config = get_app_config()
             
-            resend.api_key = settings.RESEND_API_KEY
-            
-            # Get app URL from environment or use default
+            # Get app URL from parameter or config
             if not app_url:
-                app_url = os.getenv("NEXT_PUBLIC_APP_URL", "https://gestion.senatrack.app")
+                app_url = config["app_url"]
             
             invitation_url = f"{app_url}/invitations?id={invitation.id}"
             
@@ -325,77 +324,20 @@ class InvitationService:
             }
             role_label = role_labels.get(invitation.role, invitation.role)
             
-            # Application name
-            app_name = os.getenv("APPLICATION_NAME", "SenaTrack")
-            website = os.getenv("WEBSITE", "senatrack.app")
-            app_description = os.getenv("APP_DESCRIPTION", "SenaTrack est une solution complète pour la gestion de vos factures, stocks, et clients.")
+            # Send email via email service
+            result = email_service.send_invitation_email(
+                to=invitation.email,
+                invitation_url=invitation_url,
+                company_name=company_name,
+                invited_by_name=invited_by_name,
+                role_label=role_label,
+                expires_at=invitation.expires_at,
+                message=invitation.message,
+                app_name=config["app_name"],
+                app_description=config["app_description"]
+            )
             
-            # Build HTML email
-            html_content = f"""
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-              <div style="text-align: center; margin-bottom: 30px;">
-                <h1 style="color: #1f2937; margin-bottom: 10px;">{app_name}</h1>
-                <p style="color: #6b7280; font-size: 16px;">{app_description}</p>
-              </div>
-              
-              <div style="background: #f8fafc; padding: 30px; border-radius: 8px; margin-bottom: 30px;">
-                <h2 style="color: #1f2937; margin-bottom: 20px;">Invitation à rejoindre une entreprise</h2>
-                
-                <p style="color: #374151; margin-bottom: 15px;">
-                  Bonjour,
-                </p>
-                
-                <p style="color: #374151; margin-bottom: 20px;">
-                  <strong>{invited_by_name}</strong> vous invite à rejoindre l'entreprise <strong>{company_name}</strong> sur {app_name}.
-                </p>
-                
-                <div style="background: white; padding: 20px; border-radius: 6px; margin: 20px 0;">
-                  <h3 style="color: #1f2937; margin-bottom: 10px;">Détails de l'invitation :</h3>
-                  <ul style="color: #374151; margin: 0; padding-left: 20px;">
-                    <li><strong>Entreprise :</strong> {company_name}</li>
-                    <li><strong>Rôle proposé :</strong> {role_label}</li>
-                    <li><strong>Expire le :</strong> {invitation.expires_at.strftime('%d/%m/%Y') if invitation.expires_at else 'N/A'}</li>
-                  </ul>
-                </div>
-                
-                {f'''
-                <div style="background: #fef3c7; padding: 15px; border-radius: 6px; margin: 20px 0;">
-                  <h4 style="color: #92400e; margin-bottom: 10px;">Message de {invited_by_name} :</h4>
-                  <p style="color: #92400e; margin: 0;">{invitation.message}</p>
-                </div>
-                ''' if invitation.message else ''}
-                
-                <div style="text-align: center; margin: 30px 0;">
-                  <a href="{invitation_url}" 
-                     style="background: #3b82f6; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block;">
-                    Accepter l'invitation
-                  </a>
-                </div>
-                
-                <p style="color: #6b7280; font-size: 14px; text-align: center; margin-top: 30px;">
-                  Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur :<br>
-                  <a href="{invitation_url}" style="color: #3b82f6;">{invitation_url}</a>
-                </p>
-              </div>
-              
-              <div style="text-align: center; color: #6b7280; font-size: 12px;">
-                <p>Cet email a été envoyé par {app_name}. Si vous n'avez pas demandé cette invitation, vous pouvez ignorer cet email.</p>
-              </div>
-            </div>
-            """
-            
-            # Send email
-            result = resend.emails.send({
-                "from": f"{app_name} <noreply@{website}>",
-                "to": [invitation.email],
-                "subject": f"Invitation à rejoindre {company_name} sur {app_name}",
-                "html": html_content,
-            })
-            
-            if result.get("error"):
-                raise HTTPException(status_code=500, detail=f"Failed to send email: {result['error']}")
-            
-            return {"success": True, "data": result}
+            return {"success": True, "data": result.get("data", {})}
         except HTTPException:
             raise
         except Exception as e:

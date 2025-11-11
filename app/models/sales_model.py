@@ -14,7 +14,7 @@ class Sale(Base):
     company_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
     reference: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
     date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    client_id: Mapped[str] = mapped_column(String(20), nullable=False)
+    client_id: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     client_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     seller_id: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     subtotal: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
