@@ -51,7 +51,7 @@ class SalesService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving sales: {str(e)}")
 
-    async def get_by_id(self, sale_id: int, company_id: str) -> Optional[SaleSchema]:
+    async def get_by_id(self, sale_id: str, company_id: str) -> Optional[SaleSchema]:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -79,7 +79,7 @@ class SalesService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving sale: {str(e)}")
 
-    async def create(self, company_id: str, payload: SaleCreate) -> int:
+    async def create(self, company_id: str, payload: SaleCreate) -> str:
         try:
             session = get_db_session()
             sale = SaleModel(
@@ -108,7 +108,7 @@ class SalesService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating sale: {str(e)}")
 
-    async def update(self, sale_id: int, company_id: str, payload: SaleUpdate) -> bool:
+    async def update(self, sale_id: str, company_id: str, payload: SaleUpdate) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -133,7 +133,7 @@ class SalesService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating sale: {str(e)}")
 
-    async def delete(self, sale_id: int, company_id: str) -> bool:
+    async def delete(self, sale_id: str, company_id: str) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -174,7 +174,7 @@ class SalesService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error generating sale reference: {str(e)}")
 
-    async def calculate_sale_profit(self, sale_id: int, company_id: str) -> dict:
+    async def calculate_sale_profit(self, sale_id: str, company_id: str) -> dict:
         """Calculate profit for a sale based on product costs and sale prices"""
         try:
             session = get_db_session()

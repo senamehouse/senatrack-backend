@@ -22,7 +22,7 @@ async def get_purchase_orders(
 
 @router.get("/{order_id}")
 async def get_purchase_order(
-    order_id: int,
+    order_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
@@ -46,7 +46,7 @@ async def create_purchase_order(
 
 @router.put("/{order_id}")
 async def update_purchase_order(
-    order_id: int,
+    order_id: str,
     payload: dict,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
@@ -60,7 +60,7 @@ async def update_purchase_order(
 
 @router.delete("/{order_id}")
 async def delete_purchase_order(
-    order_id: int,
+    order_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)

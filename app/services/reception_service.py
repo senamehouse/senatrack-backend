@@ -19,7 +19,7 @@ class ReceptionService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving receptions: {str(e)}")
 
-    async def get_by_id(self, reception_id: int, company_id: str) -> Optional[ReceptionSchema]:
+    async def get_by_id(self, reception_id: str, company_id: str) -> Optional[ReceptionSchema]:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -33,7 +33,7 @@ class ReceptionService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving reception: {str(e)}")
 
-    async def create(self, company_id: str, payload: ReceptionCreate) -> int:
+    async def create(self, company_id: str, payload: ReceptionCreate) -> str:
         try:
             session = get_db_session()
             rec = ReceptionModel(
@@ -49,7 +49,7 @@ class ReceptionService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating reception: {str(e)}")
 
-    async def update(self, reception_id: int, company_id: str, payload: ReceptionUpdate) -> bool:
+    async def update(self, reception_id: str, company_id: str, payload: ReceptionUpdate) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -70,7 +70,7 @@ class ReceptionService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating reception: {str(e)}")
 
-    async def delete(self, reception_id: int, company_id: str) -> bool:
+    async def delete(self, reception_id: str, company_id: str) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

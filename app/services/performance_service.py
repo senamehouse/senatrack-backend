@@ -18,7 +18,7 @@ class PerformanceService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving performance reviews: {str(e)}")
 
-    async def get_by_id(self, review_id: int, company_id: str) -> Optional[PerformanceSchema]:
+    async def get_by_id(self, review_id: str, company_id: str) -> Optional[PerformanceSchema]:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -32,7 +32,7 @@ class PerformanceService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving performance review: {str(e)}")
 
-    async def create(self, company_id: str, payload: PerformanceReviewCreate) -> int:
+    async def create(self, company_id: str, payload: PerformanceReviewCreate) -> str:
         try:
             session = get_db_session()
             pr = PerformanceModel(
@@ -49,7 +49,7 @@ class PerformanceService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating performance review: {str(e)}")
 
-    async def update(self, review_id: int, company_id: str, payload: PerformanceReviewUpdate) -> bool:
+    async def update(self, review_id: str, company_id: str, payload: PerformanceReviewUpdate) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -69,7 +69,7 @@ class PerformanceService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating performance review: {str(e)}")
 
-    async def delete(self, review_id: int, company_id: str) -> bool:
+    async def delete(self, review_id: str, company_id: str) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

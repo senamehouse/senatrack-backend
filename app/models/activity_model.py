@@ -14,7 +14,7 @@ class ActivityLog(Base):
     id: Mapped[str] = mapped_column(String(20), primary_key=True, index=True, default=generate_id)
     action: Mapped[str] = mapped_column(String(255), nullable=False)
     details: Mapped[str] = mapped_column(Text, nullable=False)
-    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
     user_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     company_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     entity_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

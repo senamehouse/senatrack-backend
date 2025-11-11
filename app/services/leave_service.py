@@ -18,7 +18,7 @@ class LeaveService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving leave requests: {str(e)}")
 
-    async def get_by_id(self, leave_id: int, company_id: str) -> Optional[LeaveSchema]:
+    async def get_by_id(self, leave_id: str, company_id: str) -> Optional[LeaveSchema]:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -32,7 +32,7 @@ class LeaveService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving leave request: {str(e)}")
 
-    async def create(self, company_id: str, payload: LeaveRequestCreate) -> int:
+    async def create(self, company_id: str, payload: LeaveRequestCreate) -> str:
         try:
             session = get_db_session()
             lv = LeaveModel(
@@ -54,7 +54,7 @@ class LeaveService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating leave request: {str(e)}")
 
-    async def update(self, leave_id: int, company_id: str, payload: LeaveRequestUpdate) -> bool:
+    async def update(self, leave_id: str, company_id: str, payload: LeaveRequestUpdate) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -74,7 +74,7 @@ class LeaveService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating leave request: {str(e)}")
 
-    async def delete(self, leave_id: int, company_id: str) -> bool:
+    async def delete(self, leave_id: str, company_id: str) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -116,7 +116,7 @@ class LeaveService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error computing leave stats: {str(e)}")
 
-    async def approve(self, leave_id: int, company_id: str, approved_by: Optional[str] = None) -> bool:
+    async def approve(self, leave_id: str, company_id: str, approved_by: Optional[str] = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -137,7 +137,7 @@ class LeaveService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error approving leave request: {str(e)}")
 
-    async def reject(self, leave_id: int, company_id: str, approved_by: Optional[str] = None) -> bool:
+    async def reject(self, leave_id: str, company_id: str, approved_by: Optional[str] = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

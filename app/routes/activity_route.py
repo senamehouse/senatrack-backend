@@ -25,7 +25,7 @@ async def create_activity_log(
 
 @router.get("/", response_model=List[ActivityLog])
 async def get_activity_logs(
-    user_id: Optional[int] = Query(None),
+    user_id: Optional[str] = Query(None),
     entity_type: Optional[str] = Query(None),
     entity_id: Optional[str] = Query(None),
     start_date: Optional[datetime] = Query(None),
@@ -67,7 +67,7 @@ async def get_recent_activities(
 
 @router.get("/{activity_id}", response_model=ActivityLog)
 async def get_activity_log(
-    activity_id: int,
+    activity_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):

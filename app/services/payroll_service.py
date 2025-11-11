@@ -19,7 +19,7 @@ class PayrollService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving payroll: {str(e)}")
 
-    async def get_by_id(self, payroll_id: int, company_id: str) -> Optional[PayrollSchema]:
+    async def get_by_id(self, payroll_id: str, company_id: str) -> Optional[PayrollSchema]:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -33,7 +33,7 @@ class PayrollService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving payroll: {str(e)}")
 
-    async def create(self, company_id: str, payload: PayrollCreate) -> int:
+    async def create(self, company_id: str, payload: PayrollCreate) -> str:
         try:
             session = get_db_session()
             pr = PayrollModel(
@@ -53,7 +53,7 @@ class PayrollService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating payroll: {str(e)}")
 
-    async def update(self, payroll_id: int, company_id: str, payload: PayrollUpdate) -> bool:
+    async def update(self, payroll_id: str, company_id: str, payload: PayrollUpdate) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -73,7 +73,7 @@ class PayrollService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating payroll: {str(e)}")
 
-    async def delete(self, payroll_id: int, company_id: str) -> bool:
+    async def delete(self, payroll_id: str, company_id: str) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

@@ -43,7 +43,7 @@ async def get_company_proformas(
 
 @router.get("/{proforma_id}", response_model=Proforma)
 async def get_proforma(
-    proforma_id: int,
+    proforma_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
@@ -56,7 +56,7 @@ async def get_proforma(
 
 @router.put("/{proforma_id}", response_model=Proforma)
 async def update_proforma(
-    proforma_id: int,
+    proforma_id: str,
     proforma_data: ProformaUpdate,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
@@ -67,7 +67,7 @@ async def update_proforma(
 
 @router.delete("/{proforma_id}")
 async def delete_proforma(
-    proforma_id: int,
+    proforma_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)

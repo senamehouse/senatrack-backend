@@ -63,9 +63,9 @@ class SaleCreate(SaleBase):
 class SaleUpdate(BaseCamelModel):
     reference: Optional[str] = None
     date: Optional[datetime] = None
-    client_id: Optional[int] = None
+    client_id: Optional[str] = None
     client_name: Optional[str] = None
-    seller_id: Optional[int] = None
+    seller_id: Optional[str] = None
     subtotal: Optional[float] = None
     discount: Optional[float] = None
     tva_rate: Optional[float] = None

@@ -22,7 +22,7 @@ class ServiceService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving services: {str(e)}")
 
-    async def get_service_by_id(self, service_id: int, company_id: str) -> Optional[ServiceSchema]:
+    async def get_service_by_id(self, service_id: str, company_id: str) -> Optional[ServiceSchema]:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -37,7 +37,7 @@ class ServiceService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving service: {str(e)}")
 
-    async def create_service(self, company_id: str, service_data: ServiceCreate) -> int:
+    async def create_service(self, company_id: str, service_data: ServiceCreate) -> str:
         try:
             session = get_db_session()
             service = ServiceModel(
@@ -54,7 +54,7 @@ class ServiceService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating service: {str(e)}")
 
-    async def update_service(self, service_id: int, company_id: str, service_data: ServiceUpdate) -> bool:
+    async def update_service(self, service_id: str, company_id: str, service_data: ServiceUpdate) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -82,7 +82,7 @@ class ServiceService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating service: {str(e)}")
 
-    async def delete_service(self, service_id: int, company_id: str) -> bool:
+    async def delete_service(self, service_id: str, company_id: str) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

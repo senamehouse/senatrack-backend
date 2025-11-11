@@ -23,7 +23,7 @@ async def get_services(
 
 @router.get("/{service_id}", response_model=ServiceSchema)
 async def get_service(
-    service_id: int,
+    service_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
@@ -47,7 +47,7 @@ async def create_service(
 
 @router.put("/{service_id}", response_model=dict)
 async def update_service(
-    service_id: int,
+    service_id: str,
     payload: ServiceUpdate,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
@@ -61,7 +61,7 @@ async def update_service(
 
 @router.delete("/{service_id}", response_model=dict)
 async def delete_service(
-    service_id: int,
+    service_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)

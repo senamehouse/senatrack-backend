@@ -12,7 +12,7 @@ from app.schemas.activity_schema import ActivityLogCreate, ActivityLog as Activi
 class ActivityService:
     """Service for activity log-related database operations"""
 
-    async def create_activity_log(self, activity_data: ActivityLogCreate) -> int:
+    async def create_activity_log(self, activity_data: ActivityLogCreate) -> str:
         """Create a new activity log and return the ID"""
         try:
             session = get_db_session()
@@ -82,7 +82,7 @@ class ActivityService:
         filters = ActivityLogFilters(limit=limit, company_id=company_id)
         return await self.get_activity_logs(filters)
 
-    async def get_activity_log_by_id(self, activity_id: int) -> Optional[ActivityLogSchema]:
+    async def get_activity_log_by_id(self, activity_id: str) -> Optional[ActivityLogSchema]:
         """Get an activity log by ID"""
         try:
             session = get_db_session()

@@ -172,7 +172,7 @@ class AuthService:
             expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
         )
     
-    async def create_refresh_token_db(self, user_id: str, token: str, expires_at: datetime) -> int:
+    async def create_refresh_token_db(self, user_id: str, token: str, expires_at: datetime) -> str:
         """Create a refresh token in database"""
         try:
             session = get_db_session()
@@ -277,7 +277,7 @@ class AuthService:
         await self.revoke_refresh_token(refresh_token)
         return {"message": "Successfully logged out"}
     
-    async def logout_all_sessions(self, user_id: int) -> Dict[str, str]:
+    async def logout_all_sessions(self, user_id: str) -> Dict[str, str]:
         """Logout user from all sessions"""
         await self.revoke_all_user_tokens(user_id)
         return {"message": "Successfully logged out from all sessions"}

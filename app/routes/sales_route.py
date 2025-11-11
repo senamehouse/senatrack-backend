@@ -23,7 +23,7 @@ async def get_sales(
 
 @router.get("/{sale_id}", response_model=SaleSchema)
 async def get_sale(
-    sale_id: int,
+    sale_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
@@ -47,7 +47,7 @@ async def create_sale(
 
 @router.put("/{sale_id}", response_model=dict)
 async def update_sale(
-    sale_id: int,
+    sale_id: str,
     payload: SaleUpdate,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
@@ -61,7 +61,7 @@ async def update_sale(
 
 @router.delete("/{sale_id}", response_model=dict)
 async def delete_sale(
-    sale_id: int,
+    sale_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
@@ -84,7 +84,7 @@ async def generate_sale_number(
 
 @router.get("/{sale_id}/profit")
 async def get_sale_profit(
-    sale_id: int,
+    sale_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
@@ -95,7 +95,7 @@ async def get_sale_profit(
 
 @router.get("/{sale_id}/stock-movements")
 async def get_sale_stock_movements(
-    sale_id: int,
+    sale_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)

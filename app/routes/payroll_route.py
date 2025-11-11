@@ -23,7 +23,7 @@ async def get_payroll(
 
 @router.get("/{payroll_id}", response_model=Payroll)
 async def get_payroll_row(
-    payroll_id: int,
+    payroll_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
@@ -47,7 +47,7 @@ async def create_payroll(
 
 @router.put("/{payroll_id}", response_model=dict)
 async def update_payroll(
-    payroll_id: int,
+    payroll_id: str,
     payload: PayrollUpdate,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
@@ -61,7 +61,7 @@ async def update_payroll(
 
 @router.delete("/{payroll_id}", response_model=dict)
 async def delete_payroll(
-    payroll_id: int,
+    payroll_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)

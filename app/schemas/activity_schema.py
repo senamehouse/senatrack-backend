@@ -9,7 +9,7 @@ class ActivityLogBase(BaseCamelModel):
     
     action: str = Field(..., min_length=1, max_length=255)
     details: str = Field(..., min_length=1)
-    user_id: Optional[int] = Field(None, alias="userId")
+    user_id: Optional[str] = Field(None, alias="userId")
     user_email: Optional[str] = Field(None, max_length=255, alias="userEmail")
     company_id: Optional[str] = Field(None, alias="companyId")
     entity_type: Optional[str] = Field(None, max_length=100, alias="entityType")
@@ -32,7 +32,7 @@ class ActivityLog(ActivityLogBase):
 class ActivityLogFilters(BaseCamelModel):
     """Schema for activity log filters"""
     
-    user_id: Optional[int] = Field(None, alias="userId")
+    user_id: Optional[str] = Field(None, alias="userId")
     company_id: Optional[str] = Field(None, alias="companyId")
     entity_type: Optional[str] = Field(None, alias="entityType")
     entity_id: Optional[str] = Field(None, alias="entityId")

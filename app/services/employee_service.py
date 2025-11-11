@@ -22,7 +22,7 @@ class EmployeeService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving employees: {str(e)}")
 
-    async def get_by_id(self, employee_id: int, company_id: str) -> Optional[EmployeeSchema]:
+    async def get_by_id(self, employee_id: str, company_id: str) -> Optional[EmployeeSchema]:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -36,7 +36,7 @@ class EmployeeService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving employee: {str(e)}")
 
-    async def create(self, company_id: str, payload: EmployeeCreate) -> int:
+    async def create(self, company_id: str, payload: EmployeeCreate) -> str:
         try:
             session = get_db_session()
             emp = EmployeeModel(
@@ -59,7 +59,7 @@ class EmployeeService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating employee: {str(e)}")
 
-    async def update(self, employee_id: int, company_id: str, payload: EmployeeUpdate) -> bool:
+    async def update(self, employee_id: str, company_id: str, payload: EmployeeUpdate) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -79,7 +79,7 @@ class EmployeeService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating employee: {str(e)}")
 
-    async def delete(self, employee_id: int, company_id: str) -> bool:
+    async def delete(self, employee_id: str, company_id: str) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

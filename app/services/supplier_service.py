@@ -22,7 +22,7 @@ class SupplierService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving suppliers: {str(e)}")
 
-    async def get_supplier_by_id(self, supplier_id: int, company_id: str) -> Optional[SupplierSchema]:
+    async def get_supplier_by_id(self, supplier_id: str, company_id: str) -> Optional[SupplierSchema]:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -37,7 +37,7 @@ class SupplierService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving supplier: {str(e)}")
 
-    async def create_supplier(self, company_id: str, supplier_data: SupplierCreate) -> int:
+    async def create_supplier(self, company_id: str, supplier_data: SupplierCreate) -> str:
         try:
             session = get_db_session()
             supplier = SupplierModel(
@@ -54,7 +54,7 @@ class SupplierService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating supplier: {str(e)}")
 
-    async def update_supplier(self, supplier_id: int, company_id: str, supplier_data: SupplierUpdate) -> bool:
+    async def update_supplier(self, supplier_id: str, company_id: str, supplier_data: SupplierUpdate) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -82,7 +82,7 @@ class SupplierService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating supplier: {str(e)}")
 
-    async def delete_supplier(self, supplier_id: int, company_id: str) -> bool:
+    async def delete_supplier(self, supplier_id: str, company_id: str) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

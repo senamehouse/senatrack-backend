@@ -19,7 +19,7 @@ class PurchaseOrderService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving purchase orders: {str(e)}")
 
-    async def get_by_id(self, order_id: int, company_id: str) -> Optional[PurchaseOrderSchema]:
+    async def get_by_id(self, order_id: str, company_id: str) -> Optional[PurchaseOrderSchema]:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -33,7 +33,7 @@ class PurchaseOrderService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving purchase order: {str(e)}")
 
-    async def create(self, company_id: str, payload: PurchaseOrderCreate) -> int:
+    async def create(self, company_id: str, payload: PurchaseOrderCreate) -> str:
         try:
             session = get_db_session()
             po = PurchaseOrderModel(
@@ -50,7 +50,7 @@ class PurchaseOrderService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating purchase order: {str(e)}")
 
-    async def update(self, order_id: int, company_id: str, payload: PurchaseOrderUpdate) -> bool:
+    async def update(self, order_id: str, company_id: str, payload: PurchaseOrderUpdate) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -71,7 +71,7 @@ class PurchaseOrderService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating purchase order: {str(e)}")
 
-    async def delete(self, order_id: int, company_id: str) -> bool:
+    async def delete(self, order_id: str, company_id: str) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

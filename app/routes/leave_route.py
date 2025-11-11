@@ -23,7 +23,7 @@ async def get_leaves(
 
 @router.get("/{leave_id}", response_model=LeaveRequest)
 async def get_leave(
-    leave_id: int,
+    leave_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
@@ -47,7 +47,7 @@ async def create_leave(
 
 @router.put("/{leave_id}", response_model=dict)
 async def update_leave(
-    leave_id: int,
+    leave_id: str,
     payload: LeaveRequestUpdate,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
@@ -61,7 +61,7 @@ async def update_leave(
 
 @router.delete("/{leave_id}", response_model=dict)
 async def delete_leave(
-    leave_id: int,
+    leave_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
@@ -82,7 +82,7 @@ async def get_leave_stats(
 
 @router.post("/{leave_id}/approve", response_model=dict)
 async def approve_leave(
-    leave_id: int,
+    leave_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
@@ -95,7 +95,7 @@ async def approve_leave(
 
 @router.post("/{leave_id}/reject", response_model=dict)
 async def reject_leave(
-    leave_id: int,
+    leave_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)

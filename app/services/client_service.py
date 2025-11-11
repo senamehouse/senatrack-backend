@@ -22,7 +22,7 @@ class ClientService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving clients: {str(e)}")
 
-    async def get_client_by_id(self, client_id: int, company_id: str) -> Optional[ClientSchema]:
+    async def get_client_by_id(self, client_id: str, company_id: str) -> Optional[ClientSchema]:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -37,7 +37,7 @@ class ClientService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving client: {str(e)}")
 
-    async def create_client(self, company_id: str, client_data: ClientCreate) -> int:
+    async def create_client(self, company_id: str, client_data: ClientCreate) -> str:
         try:
             session = get_db_session()
             client = ClientModel(
@@ -55,7 +55,7 @@ class ClientService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating client: {str(e)}")
 
-    async def update_client(self, client_id: int, company_id: str, client_data: ClientUpdate) -> bool:
+    async def update_client(self, client_id: str, company_id: str, client_data: ClientUpdate) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -85,7 +85,7 @@ class ClientService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating client: {str(e)}")
 
-    async def delete_client(self, client_id: int, company_id: str) -> bool:
+    async def delete_client(self, client_id: str, company_id: str) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

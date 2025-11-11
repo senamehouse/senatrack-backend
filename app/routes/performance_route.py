@@ -23,7 +23,7 @@ async def get_reviews(
 
 @router.get("/{review_id}", response_model=PerformanceReview)
 async def get_review(
-    review_id: int,
+    review_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
@@ -47,7 +47,7 @@ async def create_review(
 
 @router.put("/{review_id}", response_model=dict)
 async def update_review(
-    review_id: int,
+    review_id: str,
     payload: PerformanceReviewUpdate,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
@@ -61,7 +61,7 @@ async def update_review(
 
 @router.delete("/{review_id}", response_model=dict)
 async def delete_review(
-    review_id: int,
+    review_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)

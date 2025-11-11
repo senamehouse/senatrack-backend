@@ -18,7 +18,7 @@ class StockMovementService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving stock movements: {str(e)}")
 
-    async def get_by_id(self, movement_id: int, company_id: str) -> Optional[StockMovementSchema]:
+    async def get_by_id(self, movement_id: str, company_id: str) -> Optional[StockMovementSchema]:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -32,7 +32,7 @@ class StockMovementService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving stock movement: {str(e)}")
 
-    async def create(self, company_id: str, payload: StockMovementCreate) -> int:
+    async def create(self, company_id: str, payload: StockMovementCreate) -> str:
         try:
             session = get_db_session()
             movement = StockMovementModel(
@@ -68,7 +68,7 @@ class StockMovementService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating stock movement: {str(e)}")
 
-    async def update(self, movement_id: int, company_id: str, payload: StockMovementUpdate) -> bool:
+    async def update(self, movement_id: str, company_id: str, payload: StockMovementUpdate) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -108,7 +108,7 @@ class StockMovementService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating stock movement: {str(e)}")
 
-    async def delete(self, movement_id: int, company_id: str) -> bool:
+    async def delete(self, movement_id: str, company_id: str) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -127,7 +127,7 @@ class StockMovementService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error deleting stock movement: {str(e)}")
 
-    async def get_product_stock(self, product_id: int, company_id: str) -> int:
+    async def get_product_stock(self, product_id: str, company_id: str) -> int:
         """Get current stock for a product"""
         try:
             session = get_db_session()
@@ -143,7 +143,7 @@ class StockMovementService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error getting product stock: {str(e)}")
 
-    async def get_movements_by_sale_id(self, sale_id: int, company_id: str) -> List[StockMovementSchema]:
+    async def get_movements_by_sale_id(self, sale_id: str, company_id: str) -> List[StockMovementSchema]:
         """Get stock movements by sale ID"""
         try:
             session = get_db_session()

@@ -22,7 +22,7 @@ async def get_receptions(
 
 @router.get("/{reception_id}")
 async def get_reception(
-    reception_id: int,
+    reception_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
@@ -46,7 +46,7 @@ async def create_reception(
 
 @router.put("/{reception_id}")
 async def update_reception(
-    reception_id: int,
+    reception_id: str,
     payload: dict,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
@@ -60,7 +60,7 @@ async def update_reception(
 
 @router.delete("/{reception_id}")
 async def delete_reception(
-    reception_id: int,
+    reception_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)

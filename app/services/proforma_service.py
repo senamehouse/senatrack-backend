@@ -36,7 +36,7 @@ class ProformaService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating proforma: {str(e)}")
 
-    async def get_proforma_by_id(self, proforma_id: int) -> Optional[Proforma]:
+    async def get_proforma_by_id(self, proforma_id: str) -> Optional[Proforma]:
         """Get a proforma by ID"""
         try:
             session = get_db_session()
@@ -81,7 +81,7 @@ class ProformaService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving proformas: {str(e)}")
 
-    async def update_proforma(self, proforma_id: int, proforma_data: ProformaUpdate) -> Proforma:
+    async def update_proforma(self, proforma_id: str, proforma_data: ProformaUpdate) -> Proforma:
         """Update a proforma"""
         try:
             session = get_db_session()
@@ -113,7 +113,7 @@ class ProformaService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating proforma: {str(e)}")
 
-    async def delete_proforma(self, proforma_id: int) -> bool:
+    async def delete_proforma(self, proforma_id: str) -> bool:
         """Delete a proforma (soft delete)"""
         try:
             session = get_db_session()

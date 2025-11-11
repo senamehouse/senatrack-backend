@@ -51,7 +51,7 @@ class SyncService:
             logger.error(f"Error getting unsynced changes: {str(e)}")
             return []
     
-    async def mark_sync_log_as_synced(self, log_id: int):
+    async def mark_sync_log_as_synced(self, log_id: str):
         """Mark a sync log entry as synced"""
         try:
             async with LocalAsyncSession() as session:

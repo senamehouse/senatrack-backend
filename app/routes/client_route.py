@@ -23,7 +23,7 @@ async def get_clients(
 
 @router.get("/{client_id}", response_model=Client)
 async def get_client(
-    client_id: int,
+    client_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
@@ -47,7 +47,7 @@ async def create_client(
 
 @router.put("/{client_id}", response_model=dict)
 async def update_client(
-    client_id: int,
+    client_id: str,
     payload: ClientUpdate,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
@@ -61,7 +61,7 @@ async def update_client(
 
 @router.delete("/{client_id}", response_model=dict)
 async def delete_client(
-    client_id: int,
+    client_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)

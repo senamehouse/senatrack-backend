@@ -23,7 +23,7 @@ async def get_suppliers(
 
 @router.get("/{supplier_id}", response_model=Supplier)
 async def get_supplier(
-    supplier_id: int,
+    supplier_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
@@ -47,7 +47,7 @@ async def create_supplier(
 
 @router.put("/{supplier_id}", response_model=dict)
 async def update_supplier(
-    supplier_id: int,
+    supplier_id: str,
     payload: SupplierUpdate,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
@@ -61,7 +61,7 @@ async def update_supplier(
 
 @router.delete("/{supplier_id}", response_model=dict)
 async def delete_supplier(
-    supplier_id: int,
+    supplier_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)

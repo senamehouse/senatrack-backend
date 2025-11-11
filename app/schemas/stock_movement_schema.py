@@ -32,8 +32,8 @@ class StockMovementBase(BaseCamelModel):
     date: datetime
     movement_type: MovementType
     label: str
-    supplier_id: Optional[int] = None
-    customer_id: Optional[int] = None
+    supplier_id: Optional[str] = None
+    customer_id: Optional[str] = None
     reason: Optional[str] = None
     author: str
     details: Optional[str] = None
@@ -49,8 +49,8 @@ class StockMovementUpdate(BaseCamelModel):
     date: Optional[datetime] = None
     movement_type: Optional[MovementType] = None
     label: Optional[str] = None
-    supplier_id: Optional[int] = None
-    customer_id: Optional[int] = None
+    supplier_id: Optional[str] = None
+    customer_id: Optional[str] = None
     reason: Optional[str] = None
     author: Optional[str] = None
     details: Optional[str] = None
