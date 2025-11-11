@@ -5,6 +5,7 @@ from sqlalchemy import select, func
 from app.core.database import get_db_session
 from app.models.employee_model import Employee as EmployeeModel
 from app.schemas.employee_schema import Employee as EmployeeSchema, EmployeeCreate, EmployeeUpdate
+from app.utils.activity_logger import audit, ActivityActor
 
 
 class EmployeeService:
@@ -36,7 +37,14 @@ class EmployeeService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving employee: {str(e)}")
 
-    async def create(self, company_id: str, payload: EmployeeCreate) -> str:
+    @audit(
+        action="CREATE",
+        entity_type="employee",
+        details=lambda result, _a, kw: f"Employé {kw['payload'].first_name} {kw['payload'].last_name} créé",
+        entity_id=lambda result, _a, _kw: result,
+        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(exclude_none=True)},
+    )
+    async def create(self, company_id: str, payload: EmployeeCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
             emp = EmployeeModel(
@@ -59,7 +67,14 @@ class EmployeeService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating employee: {str(e)}")
 
-    async def update(self, employee_id: str, company_id: str, payload: EmployeeUpdate) -> bool:
+    @audit(
+        action="UPDATE",
+        entity_type="employee",
+        details=lambda _r, _a, kw: f"Employé {kw['employee_id']} mis à jour",
+        entity_id=lambda _r, _a, kw: kw["employee_id"],
+        extra=lambda _r, _a, kw: kw["payload"].model_dump(exclude_unset=True),
+    )
+    async def update(self, employee_id: str, company_id: str, payload: EmployeeUpdate, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -79,7 +94,13 @@ class EmployeeService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating employee: {str(e)}")
 
-    async def delete(self, employee_id: str, company_id: str) -> bool:
+    @audit(
+        action="DELETE",
+        entity_type="employee",
+        details=lambda _r, _a, kw: f"Employé {kw['employee_id']} supprimé",
+        entity_id=lambda _r, _a, kw: kw["employee_id"],
+    )
+    async def delete(self, employee_id: str, company_id: str, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

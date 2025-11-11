@@ -13,6 +13,7 @@ from app.schemas.company_schema import (
 )
 from app.schemas.user_schema import User
 from app.services.user_service import UserService
+from app.utils.activity_logger import audit, ActivityActor
 import secrets
 from datetime import datetime, timedelta
 
@@ -176,7 +177,14 @@ class CompanyService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving user companies: {str(e)}")
 
-    async def update_company(self, company_id: str, company_data: CompanyUpdate) -> Company:
+    @audit(
+        action="UPDATE",
+        entity_type="company",
+        details=lambda _r, _a, kw: f"Paramètres de l’entreprise {kw['company_id']} mis à jour",
+        entity_id=lambda _r, _a, kw: kw["company_id"],
+        extra=lambda _r, _a, kw: kw["company_data"].model_dump(exclude_unset=True),
+    )
+    async def update_company(self, company_id: str, company_data: CompanyUpdate, actor: ActivityActor | None = None) -> Company:
         """Update a company"""
         try:
             session = get_db_session()
@@ -208,7 +216,13 @@ class CompanyService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating company: {str(e)}")
 
-    async def delete_company(self, company_id: str) -> bool:
+    @audit(
+        action="DELETE",
+        entity_type="company",
+        details=lambda _r, _a, kw: f"Entreprise {kw['company_id']} supprimée",
+        entity_id=lambda _r, _a, kw: kw["company_id"],
+    )
+    async def delete_company(self, company_id: str, actor: ActivityActor | None = None) -> bool:
         """Delete a company (soft delete)"""
         try:
             session = get_db_session()

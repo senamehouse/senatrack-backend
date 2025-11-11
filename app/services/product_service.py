@@ -12,6 +12,7 @@ from app.schemas.product_schema import (
     UnitCreate, UnitUpdate, Unit as UnitSchema,
     ProductStats, ProductCategoryStats, UnitStats
 )
+from app.utils.activity_logger import audit, ActivityActor
 
 
 class ProductService:
@@ -47,7 +48,14 @@ class ProductService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving category: {str(e)}")
     
-    async def create_category(self, category_data: ProductCategoryCreate, company_id: str | None = None) -> str:
+    @audit(
+        action="CREATE",
+        entity_type="category",
+        details=lambda result, _a, kw: f"Catégorie {kw['category_data'].name} créée",
+        entity_id=lambda result, _a, _kw: result,
+        extra=lambda _r, _a, kw: {"payload": kw["category_data"].model_dump(exclude_none=True)},
+    )
+    async def create_category(self, category_data: ProductCategoryCreate, company_id: str | None = None, actor: ActivityActor | None = None) -> str:
         """Create a new product category and return the ID"""
         try:
             session = get_db_session()
@@ -74,7 +82,14 @@ class ProductService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating category: {str(e)}")
     
-    async def update_category(self, category_id: str, category_data: ProductCategoryUpdate, company_id: str | None = None) -> bool:
+    @audit(
+        action="UPDATE",
+        entity_type="category",
+        details=lambda _r, _a, kw: f"Catégorie {kw['category_id']} mise à jour",
+        entity_id=lambda _r, _a, kw: kw["category_id"],
+        extra=lambda _r, _a, kw: kw["category_data"].model_dump(exclude_unset=True),
+    )
+    async def update_category(self, category_id: str, category_data: ProductCategoryUpdate, company_id: str | None = None, actor: ActivityActor | None = None) -> bool:
         """Update a product category by ID"""
         try:
             session = get_db_session()
@@ -112,7 +127,13 @@ class ProductService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating category: {str(e)}")
     
-    async def delete_category(self, category_id: str, company_id: str | None = None) -> bool:
+    @audit(
+        action="DELETE",
+        entity_type="category",
+        details=lambda _r, _a, kw: f"Catégorie {kw['category_id']} supprimée",
+        entity_id=lambda _r, _a, kw: kw["category_id"],
+    )
+    async def delete_category(self, category_id: str, company_id: str | None = None, actor: ActivityActor | None = None) -> bool:
         """Delete a product category by ID (soft delete)"""
         try:
             session = get_db_session()
@@ -171,7 +192,14 @@ class ProductService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving unit: {str(e)}")
     
-    async def create_unit(self, unit_data: UnitCreate, company_id: str | None = None) -> str:
+    @audit(
+        action="CREATE",
+        entity_type="unit",
+        details=lambda result, _a, kw: f"Unité {kw['unit_data'].name} créée",
+        entity_id=lambda result, _a, _kw: result,
+        extra=lambda _r, _a, kw: {"payload": kw["unit_data"].model_dump(exclude_none=True)},
+    )
+    async def create_unit(self, unit_data: UnitCreate, company_id: str | None = None, actor: ActivityActor | None = None) -> str:
         """Create a new unit and return the ID"""
         try:
             session = get_db_session()
@@ -199,7 +227,14 @@ class ProductService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating unit: {str(e)}")
     
-    async def update_unit(self, unit_id: str, unit_data: UnitUpdate, company_id: str | None = None) -> bool:
+    @audit(
+        action="UPDATE",
+        entity_type="unit",
+        details=lambda _r, _a, kw: f"Unité {kw['unit_id']} mise à jour",
+        entity_id=lambda _r, _a, kw: kw["unit_id"],
+        extra=lambda _r, _a, kw: kw["unit_data"].model_dump(exclude_unset=True),
+    )
+    async def update_unit(self, unit_id: str, unit_data: UnitUpdate, company_id: str | None = None, actor: ActivityActor | None = None) -> bool:
         """Update a unit by ID"""
         try:
             session = get_db_session()
@@ -239,7 +274,13 @@ class ProductService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating unit: {str(e)}")
     
-    async def delete_unit(self, unit_id: str, company_id: str | None = None) -> bool:
+    @audit(
+        action="DELETE",
+        entity_type="unit",
+        details=lambda _r, _a, kw: f"Unité {kw['unit_id']} supprimée",
+        entity_id=lambda _r, _a, kw: kw["unit_id"],
+    )
+    async def delete_unit(self, unit_id: str, company_id: str | None = None, actor: ActivityActor | None = None) -> bool:
         """Delete a unit by ID (soft delete)"""
         try:
             session = get_db_session()
@@ -316,7 +357,14 @@ class ProductService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving products by category: {str(e)}")
     
-    async def create_product(self, product_data: ProductCreate, company_id: str | None = None) -> str:
+    @audit(
+        action="CREATE",
+        entity_type="product",
+        details=lambda result, _a, kw: f"Produit {kw['product_data'].name} créé",
+        entity_id=lambda result, _a, _kw: result,
+        extra=lambda _r, _a, kw: {"payload": kw["product_data"].model_dump(exclude_none=True)},
+    )
+    async def create_product(self, product_data: ProductCreate, company_id: str | None = None, actor: ActivityActor | None = None) -> str:
         """Create a new product and return the ID"""
         try:
             session = get_db_session()
@@ -350,7 +398,14 @@ class ProductService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating product: {str(e)}")
     
-    async def update_product(self, product_id: str, product_data: ProductUpdate, company_id: str | None = None) -> bool:
+    @audit(
+        action="UPDATE",
+        entity_type="product",
+        details=lambda _r, _a, kw: f"Produit {kw['product_id']} mis à jour",
+        entity_id=lambda _r, _a, kw: kw["product_id"],
+        extra=lambda _r, _a, kw: kw["product_data"].model_dump(exclude_unset=True),
+    )
+    async def update_product(self, product_id: str, product_data: ProductUpdate, company_id: str | None = None, actor: ActivityActor | None = None) -> bool:
         """Update a product by ID"""
         try:
             session = get_db_session()
@@ -402,7 +457,13 @@ class ProductService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating product: {str(e)}")
     
-    async def delete_product(self, product_id: str, company_id: str | None = None) -> bool:
+    @audit(
+        action="DELETE",
+        entity_type="product",
+        details=lambda _r, _a, kw: f"Produit {kw['product_id']} supprimé",
+        entity_id=lambda _r, _a, kw: kw["product_id"],
+    )
+    async def delete_product(self, product_id: str, company_id: str | None = None, actor: ActivityActor | None = None) -> bool:
         """Delete a product by ID (soft delete)"""
         try:
             session = get_db_session()

@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.core.database import get_db_session
 from app.models.stock_movement_model import StockMovement as StockMovementModel, StockMovementItem as StockMovementItemModel
 from app.schemas.stock_movement_schema import StockMovement as StockMovementSchema, StockMovementCreate, StockMovementUpdate, StockMovementItemCreate
+from app.utils.activity_logger import audit, ActivityActor
 
 class StockMovementService:
     async def get_all(self, company_id: str) -> List[StockMovementSchema]:
@@ -32,7 +33,14 @@ class StockMovementService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving stock movement: {str(e)}")
 
-    async def create(self, company_id: str, payload: StockMovementCreate) -> str:
+    @audit(
+        action="CREATE",
+        entity_type="stock_movement",
+        details=lambda result, _a, kw: f"Mouvement de stock {result} enregistré ({kw['payload'].movement_type.value})",
+        entity_id=lambda result, _a, _kw: result,
+        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(exclude_none=True)},
+    )
+    async def create(self, company_id: str, payload: StockMovementCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
             movement = StockMovementModel(
@@ -93,7 +101,14 @@ class StockMovementService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating stock movement: {str(e)}")
 
-    async def update(self, movement_id: str, company_id: str, payload: StockMovementUpdate) -> bool:
+    @audit(
+        action="UPDATE",
+        entity_type="stock_movement",
+        details=lambda _r, _a, kw: f"Mouvement de stock {kw['movement_id']} mis à jour",
+        entity_id=lambda _r, _a, kw: kw["movement_id"],
+        extra=lambda _r, _a, kw: kw["payload"].model_dump(exclude_unset=True),
+    )
+    async def update(self, movement_id: str, company_id: str, payload: StockMovementUpdate, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -133,7 +148,13 @@ class StockMovementService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating stock movement: {str(e)}")
 
-    async def delete(self, movement_id: str, company_id: str) -> bool:
+    @audit(
+        action="DELETE",
+        entity_type="stock_movement",
+        details=lambda _r, _a, kw: f"Mouvement de stock {kw['movement_id']} supprimé",
+        entity_id=lambda _r, _a, kw: kw["movement_id"],
+    )
+    async def delete(self, movement_id: str, company_id: str, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

@@ -12,6 +12,7 @@ from app.schemas.sales_schema import (
     SaleUpdate, 
     SaleProfit,
 )
+from app.utils.activity_logger import audit, ActivityActor
 from app.schemas.stats_schema import (
     SalesReportStats,
     TopProductProfit,
@@ -169,7 +170,14 @@ class SalesService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving sale: {str(e)}")
 
-    async def create(self, company_id: str, payload: SaleCreate) -> str:
+    @audit(
+        action="CREATE",
+        entity_type="sale",
+        details=lambda result, _a, kw: f"Vente {kw['payload'].reference} créée",
+        entity_id=lambda result, _a, _kw: result,
+        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(exclude_none=True)},
+    )
+    async def create(self, company_id: str, payload: SaleCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
             # Validate sufficient stock for product items before creating the sale
@@ -278,7 +286,14 @@ class SalesService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating sale: {str(e)}")
 
-    async def update(self, sale_id: str, company_id: str, payload: SaleUpdate) -> bool:
+    @audit(
+        action="UPDATE",
+        entity_type="sale",
+        details=lambda _r, _a, kw: f"Vente {kw['sale_id']} mise à jour",
+        entity_id=lambda _r, _a, kw: kw["sale_id"],
+        extra=lambda _r, _a, kw: kw["payload"].model_dump(exclude_unset=True),
+    )
+    async def update(self, sale_id: str, company_id: str, payload: SaleUpdate, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -303,7 +318,13 @@ class SalesService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating sale: {str(e)}")
 
-    async def delete(self, sale_id: str, company_id: str) -> bool:
+    @audit(
+        action="DELETE",
+        entity_type="sale",
+        details=lambda _r, _a, kw: f"Vente {kw['sale_id']} supprimée",
+        entity_id=lambda _r, _a, kw: kw["sale_id"],
+    )
+    async def delete(self, sale_id: str, company_id: str, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

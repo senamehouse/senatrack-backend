@@ -10,6 +10,7 @@ from app.schemas.invitation_schema import (
     InvitationStats, InvitationResponse, InvitationCancelResponse
 )
 from app.services.invitation_service import InvitationService
+from app.utils.activity_logger import ActivityActor
 
 router = APIRouter(prefix="/invitations", tags=["Invitations"])
 invitation_service = InvitationService()
@@ -21,7 +22,7 @@ async def create_invitation(
     current_user: User = Depends(get_current_user)
 ):
     """Create a new company invitation"""
-    return await invitation_service.create_invitation(invitation_data)
+    return await invitation_service.create_invitation(invitation_data=invitation_data, actor=ActivityActor(current_user.id, None))
 
 @router.get("/", response_model=List[CompanyInvitation])
 async def get_company_invitations(
@@ -73,7 +74,7 @@ async def update_invitation(
     current_user: User = Depends(get_current_user)
 ):
     """Update an invitation"""
-    return await invitation_service.update_invitation(invitation_id, invitation_data)
+    return await invitation_service.update_invitation(invitation_id=invitation_id, invitation_data=invitation_data, actor=ActivityActor(current_user.id, None))
 
 @router.post("/accept/{token}", response_model=InvitationResponse)
 async def accept_invitation(
@@ -82,7 +83,7 @@ async def accept_invitation(
     current_user: User = Depends(get_current_user)
 ):
     """Accept an invitation"""
-    return await invitation_service.accept_invitation(token, current_user.id)
+    return await invitation_service.accept_invitation(token=token, user_id=current_user.id, actor=ActivityActor(current_user.id, None))
 
 @router.post("/decline/{token}", response_model=InvitationResponse)
 async def decline_invitation(
@@ -91,7 +92,7 @@ async def decline_invitation(
     current_user: User = Depends(get_current_user)
 ):
     """Decline an invitation"""
-    return await invitation_service.decline_invitation(token)
+    return await invitation_service.decline_invitation(token=token, actor=ActivityActor(current_user.id, None))
 
 @router.delete("/{invitation_id}", response_model=InvitationCancelResponse)
 async def cancel_invitation(
@@ -100,7 +101,7 @@ async def cancel_invitation(
     current_user: User = Depends(get_current_user)
 ):
     """Cancel an invitation"""
-    return await invitation_service.cancel_invitation(invitation_id)
+    return await invitation_service.cancel_invitation(invitation_id=invitation_id, actor=ActivityActor(current_user.id, None))
 
 @router.get("/stats/overview", response_model=InvitationStats)
 async def get_invitation_stats(

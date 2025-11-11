@@ -6,6 +6,7 @@ from app.core.database import get_async_db
 from app.schemas.user_schema import User
 from app.schemas.performance_schema import PerformanceReview, PerformanceReviewCreate, PerformanceReviewUpdate
 from app.services.performance_service import PerformanceService
+from app.utils.activity_logger import ActivityActor
 
 
 router = APIRouter(prefix="/performance-reviews", tags=["Performance Reviews"])
@@ -41,7 +42,7 @@ async def create_review(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    review_id = await svc.create(company_id, payload)
+    review_id = await svc.create(company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
     return {"message": "Performance review created", "review_id": review_id}
 
 
@@ -53,7 +54,7 @@ async def update_review(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.update(review_id, company_id, payload)
+    ok = await svc.update(review_id=review_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
     if not ok:
         raise HTTPException(status_code=404, detail="Performance review not found")
     return {"message": "Performance review updated"}
@@ -66,7 +67,7 @@ async def delete_review(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.delete(review_id, company_id)
+    ok = await svc.delete(review_id=review_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
     if not ok:
         raise HTTPException(status_code=404, detail="Performance review not found")
     return {"message": "Performance review deleted"}

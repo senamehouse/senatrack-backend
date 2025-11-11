@@ -10,6 +10,7 @@ from app.schemas.company_role_schema import (
     CompanyRoleDeleteResponse, CompanyRoleAssignResponse, CompanyRoleRemoveResponse
 )
 from datetime import datetime
+from app.utils.activity_logger import audit, ActivityActor
 
 class CompanyRoleService:
     """Service for company-specific role management"""
@@ -54,7 +55,14 @@ class CompanyRoleService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating default presets: {str(e)}")
 
-    async def create_role(self, company_id: str, role_data: UserCompanyRoleCreate) -> UserCompanyRole:
+    @audit(
+        action="CREATE",
+        entity_type="company_role",
+        details=lambda result, _a, kw: f"Rôle d’entreprise {kw['role_data'].name} créé",
+        entity_id=lambda result, _a, _kw: result.id if result else None,
+        extra=lambda _r, _a, kw: {"payload": kw["role_data"].model_dump(exclude_none=True)},
+    )
+    async def create_role(self, company_id: str, role_data: UserCompanyRoleCreate, actor: ActivityActor | None = None) -> UserCompanyRole:
         """Create a new company role"""
         try:
             session = get_db_session()
@@ -123,7 +131,14 @@ class CompanyRoleService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving role: {str(e)}")
 
-    async def update_role(self, company_id: str, role_id: str, role_data: UserCompanyRoleUpdate) -> UserCompanyRole:
+    @audit(
+        action="UPDATE",
+        entity_type="company_role",
+        details=lambda _r, _a, kw: f"Rôle d’entreprise {kw['role_id']} mis à jour",
+        entity_id=lambda _r, _a, kw: kw["role_id"],
+        extra=lambda _r, _a, kw: kw["role_data"].model_dump(exclude_unset=True),
+    )
+    async def update_role(self, company_id: str, role_id: str, role_data: UserCompanyRoleUpdate, actor: ActivityActor | None = None) -> UserCompanyRole:
         """Update a company role"""
         try:
             session = get_db_session()
@@ -170,7 +185,13 @@ class CompanyRoleService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating role: {str(e)}")
 
-    async def delete_role(self, company_id: str, role_id: str) -> CompanyRoleDeleteResponse:
+    @audit(
+        action="DELETE",
+        entity_type="company_role",
+        details=lambda _r, _a, kw: f"Rôle d’entreprise {kw['role_id']} supprimé",
+        entity_id=lambda _r, _a, kw: kw["role_id"],
+    )
+    async def delete_role(self, company_id: str, role_id: str, actor: ActivityActor | None = None) -> CompanyRoleDeleteResponse:
         """Delete a company role and return response"""
         try:
             session = get_db_session()
@@ -221,7 +242,14 @@ class CompanyRoleService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error deleting role: {str(e)}")
 
-    async def assign_role_to_user(self, user_id: str, company_id: str, role_id: str, assigned_by: str) -> CompanyRoleAssignResponse:
+    @audit(
+        action="ASSIGN",
+        entity_type="company_role_assignment",
+        details=lambda result, _a, kw: f"Rôle {kw['role_id']} attribué à l’utilisateur {kw['user_id']} dans l’entreprise {kw['company_id']}",
+        entity_id=lambda result, _a, _kw: result.assignment_id if result else None,
+        extra=lambda _r, _a, kw: {"userId": kw["user_id"], "roleId": kw["role_id"], "companyId": kw["company_id"]},
+    )
+    async def assign_role_to_user(self, user_id: str, company_id: str, role_id: str, assigned_by: str, actor: ActivityActor | None = None) -> CompanyRoleAssignResponse:
         """Assign a company role to a user and return response"""
         try:
             session = get_db_session()
@@ -261,7 +289,14 @@ class CompanyRoleService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error assigning role: {str(e)}")
 
-    async def remove_role_from_user(self, user_id: str, company_id: str, role_id: str) -> CompanyRoleRemoveResponse:
+    @audit(
+        action="REVOKE",
+        entity_type="company_role_assignment",
+        details=lambda _r, _a, kw: f"Rôle {kw['role_id']} retiré de l’utilisateur {kw['user_id']} dans l’entreprise {kw['company_id']}",
+        entity_id=lambda _r, _a, kw: f"{kw['user_id']}:{kw['company_id']}:{kw['role_id']}",
+        extra=lambda _r, _a, kw: {"userId": kw["user_id"], "roleId": kw["role_id"], "companyId": kw["company_id"]},
+    )
+    async def remove_role_from_user(self, user_id: str, company_id: str, role_id: str, actor: ActivityActor | None = None) -> CompanyRoleRemoveResponse:
         """Remove a company role from a user and return response"""
         try:
             session = get_db_session()

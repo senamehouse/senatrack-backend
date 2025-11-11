@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.core.database import get_db_session
 from app.models.reception_model import Reception as ReceptionModel
 from app.schemas.reception_schema import Reception as ReceptionSchema, ReceptionCreate, ReceptionUpdate
+from app.utils.activity_logger import audit, ActivityActor
 
 
 class ReceptionService:
@@ -33,7 +34,14 @@ class ReceptionService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving reception: {str(e)}")
 
-    async def create(self, company_id: str, payload: ReceptionCreate) -> str:
+    @audit(
+        action="CREATE",
+        entity_type="reception",
+        details=lambda result, _a, kw: f"Réception {kw['payload'].reception_number} créée",
+        entity_id=lambda result, _a, _kw: result,
+        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(exclude_none=True)},
+    )
+    async def create(self, company_id: str, payload: ReceptionCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
             rec = ReceptionModel(
@@ -49,7 +57,14 @@ class ReceptionService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating reception: {str(e)}")
 
-    async def update(self, reception_id: str, company_id: str, payload: ReceptionUpdate) -> bool:
+    @audit(
+        action="UPDATE",
+        entity_type="reception",
+        details=lambda _r, _a, kw: f"Réception {kw['reception_id']} mise à jour",
+        entity_id=lambda _r, _a, kw: kw["reception_id"],
+        extra=lambda _r, _a, kw: kw["payload"].model_dump(exclude_unset=True),
+    )
+    async def update(self, reception_id: str, company_id: str, payload: ReceptionUpdate, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -70,7 +85,13 @@ class ReceptionService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating reception: {str(e)}")
 
-    async def delete(self, reception_id: str, company_id: str) -> bool:
+    @audit(
+        action="DELETE",
+        entity_type="reception",
+        details=lambda _r, _a, kw: f"Réception {kw['reception_id']} supprimée",
+        entity_id=lambda _r, _a, kw: kw["reception_id"],
+    )
+    async def delete(self, reception_id: str, company_id: str, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

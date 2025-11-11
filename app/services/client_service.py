@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.core.database import get_db_session
 from app.models.client_model import Client as ClientModel
 from app.schemas.client_schema import Client as ClientSchema, ClientCreate, ClientUpdate
+from app.utils.activity_logger import audit, ActivityActor
 
 
 class ClientService:
@@ -37,7 +38,14 @@ class ClientService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving client: {str(e)}")
 
-    async def create_client(self, company_id: str, client_data: ClientCreate) -> str:
+    @audit(
+        action="CREATE",
+        entity_type="client",
+        details=lambda result, _a, kw: f"Client {kw['client_data'].name} créé",
+        entity_id=lambda result, _a, _kw: result,
+        extra=lambda _r, _a, kw: {"payload": kw["client_data"].model_dump(exclude_none=True)},
+    )
+    async def create_client(self, company_id: str, client_data: ClientCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
             client = ClientModel(
@@ -55,7 +63,14 @@ class ClientService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating client: {str(e)}")
 
-    async def update_client(self, client_id: str, company_id: str, client_data: ClientUpdate) -> bool:
+    @audit(
+        action="UPDATE",
+        entity_type="client",
+        details=lambda _r, _a, kw: f"Client {kw['client_id']} mis à jour",
+        entity_id=lambda _r, _a, kw: kw["client_id"],
+        extra=lambda _r, _a, kw: kw["client_data"].model_dump(exclude_unset=True),
+    )
+    async def update_client(self, client_id: str, company_id: str, client_data: ClientUpdate, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -85,7 +100,13 @@ class ClientService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating client: {str(e)}")
 
-    async def delete_client(self, client_id: str, company_id: str) -> bool:
+    @audit(
+        action="DELETE",
+        entity_type="client",
+        details=lambda _r, _a, kw: f"Client {kw['client_id']} supprimé",
+        entity_id=lambda _r, _a, kw: kw["client_id"],
+    )
+    async def delete_client(self, client_id: str, company_id: str, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

@@ -5,6 +5,7 @@ from sqlalchemy import select, func
 from app.core.database import get_db_session
 from app.models.payroll_model import Payroll as PayrollModel
 from app.schemas.payroll_schema import Payroll as PayrollSchema, PayrollCreate, PayrollUpdate
+from app.utils.activity_logger import audit, ActivityActor
 
 
 class PayrollService:
@@ -33,7 +34,14 @@ class PayrollService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving payroll: {str(e)}")
 
-    async def create(self, company_id: str, payload: PayrollCreate) -> str:
+    @audit(
+        action="CREATE",
+        entity_type="payroll",
+        details=lambda result, _a, kw: f"Paie créée pour employé {kw['payload'].employee_id}",
+        entity_id=lambda result, _a, _kw: result,
+        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(exclude_none=True)},
+    )
+    async def create(self, company_id: str, payload: PayrollCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
             pr = PayrollModel(
@@ -53,7 +61,14 @@ class PayrollService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating payroll: {str(e)}")
 
-    async def update(self, payroll_id: str, company_id: str, payload: PayrollUpdate) -> bool:
+    @audit(
+        action="UPDATE",
+        entity_type="payroll",
+        details=lambda _r, _a, kw: f"Paie {kw['payroll_id']} mise à jour",
+        entity_id=lambda _r, _a, kw: kw["payroll_id"],
+        extra=lambda _r, _a, kw: kw["payload"].model_dump(exclude_unset=True),
+    )
+    async def update(self, payroll_id: str, company_id: str, payload: PayrollUpdate, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -73,7 +88,13 @@ class PayrollService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating payroll: {str(e)}")
 
-    async def delete(self, payroll_id: str, company_id: str) -> bool:
+    @audit(
+        action="DELETE",
+        entity_type="payroll",
+        details=lambda _r, _a, kw: f"Paie {kw['payroll_id']} supprimée",
+        entity_id=lambda _r, _a, kw: kw["payroll_id"],
+    )
+    async def delete(self, payroll_id: str, company_id: str, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

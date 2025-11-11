@@ -9,6 +9,7 @@ from app.schemas.user_role_schema import (
     DEFAULT_PLATFORM_ROLES, PlatformPermissions
 )
 from datetime import datetime
+from app.utils.activity_logger import audit, ActivityActor
 
 class UserRoleService:
     """Service for platform-level role management"""
@@ -47,7 +48,14 @@ class UserRoleService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating default presets: {str(e)}")
 
-    async def create_role(self, role_data: UserRoleCreate) -> UserRole:
+    @audit(
+        action="CREATE",
+        entity_type="platform_role",
+        details=lambda result, _a, kw: f"Rôle plateforme {kw['role_data'].name} créé",
+        entity_id=lambda result, _a, _kw: result.id if result else None,
+        extra=lambda _r, _a, kw: {"payload": kw["role_data"].model_dump(exclude_none=True)},
+    )
+    async def create_role(self, role_data: UserRoleCreate, actor: ActivityActor | None = None) -> UserRole:
         """Create a new platform role"""
         try:
             session = get_db_session()
@@ -100,7 +108,14 @@ class UserRoleService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving role: {str(e)}")
 
-    async def update_role(self, role_id: str, role_data: UserRoleUpdate) -> UserRole:
+    @audit(
+        action="UPDATE",
+        entity_type="platform_role",
+        details=lambda _r, _a, kw: f"Rôle plateforme {kw['role_id']} mis à jour",
+        entity_id=lambda _r, _a, kw: kw["role_id"],
+        extra=lambda _r, _a, kw: kw["role_data"].model_dump(exclude_unset=True),
+    )
+    async def update_role(self, role_id: str, role_data: UserRoleUpdate, actor: ActivityActor | None = None) -> UserRole:
         """Update a platform role"""
         try:
             session = get_db_session()
@@ -135,7 +150,13 @@ class UserRoleService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating role: {str(e)}")
 
-    async def delete_role(self, role_id: str) -> bool:
+    @audit(
+        action="DELETE",
+        entity_type="platform_role",
+        details=lambda _r, _a, kw: f"Rôle plateforme {kw['role_id']} supprimé",
+        entity_id=lambda _r, _a, kw: kw["role_id"],
+    )
+    async def delete_role(self, role_id: str, actor: ActivityActor | None = None) -> bool:
         """Delete a platform role"""
         try:
             session = get_db_session()
@@ -171,7 +192,14 @@ class UserRoleService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error deleting role: {str(e)}")
 
-    async def assign_role_to_user(self, user_id: str, role_id: str, assigned_by: str) -> UserRoleAssignment:
+    @audit(
+        action="ASSIGN",
+        entity_type="platform_role_assignment",
+        details=lambda result, _a, kw: f"Rôle {kw['role_id']} attribué à l’utilisateur {kw['user_id']}",
+        entity_id=lambda result, _a, _kw: result.id if result else None,
+        extra=lambda _r, _a, kw: {"userId": kw["user_id"], "roleId": kw["role_id"]},
+    )
+    async def assign_role_to_user(self, user_id: str, role_id: str, assigned_by: str, actor: ActivityActor | None = None) -> UserRoleAssignment:
         """Assign a platform role to a user"""
         try:
             session = get_db_session()
@@ -206,7 +234,14 @@ class UserRoleService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error assigning role: {str(e)}")
 
-    async def remove_role_from_user(self, user_id: str, role_id: str) -> bool:
+    @audit(
+        action="REVOKE",
+        entity_type="platform_role_assignment",
+        details=lambda _r, _a, kw: f"Rôle {kw['role_id']} retiré de l’utilisateur {kw['user_id']}",
+        entity_id=lambda _r, _a, kw: f"{kw['user_id']}:{kw['role_id']}",
+        extra=lambda _r, _a, kw: {"userId": kw["user_id"], "roleId": kw["role_id"]},
+    )
+    async def remove_role_from_user(self, user_id: str, role_id: str, actor: ActivityActor | None = None) -> bool:
         """Remove a platform role from a user"""
         try:
             session = get_db_session()

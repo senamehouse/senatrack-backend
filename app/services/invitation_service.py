@@ -15,6 +15,7 @@ import string
 import os
 from app.services.email_service import email_service
 from app.utils.email_templates import get_app_config
+from app.utils.activity_logger import audit, ActivityActor
 
 class InvitationService:
     """Service for company invitation-related operations"""
@@ -23,7 +24,14 @@ class InvitationService:
         """Generate a unique invitation token"""
         return ''.join(secrets.choices(string.ascii_letters + string.digits, k=32))
     
-    async def create_invitation(self, invitation_data: CompanyInvitationCreate) -> CompanyInvitation:
+    @audit(
+        action="CREATE",
+        entity_type="invitation",
+        details=lambda result, _a, kw: f"Invitation envoyée à {kw['invitation_data'].email} pour l’entreprise {kw['invitation_data'].company_id}",
+        entity_id=lambda result, _a, _kw: result.id if result else None,
+        extra=lambda _r, _a, kw: {"payload": kw["invitation_data"].model_dump(exclude_none=True)},
+    )
+    async def create_invitation(self, invitation_data: CompanyInvitationCreate, actor: ActivityActor | None = None) -> CompanyInvitation:
         """Create a new company invitation"""
         try:
             session = get_db_session()
@@ -122,7 +130,14 @@ class InvitationService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving pending invitations: {str(e)}")
     
-    async def update_invitation(self, invitation_id: str, invitation_data: CompanyInvitationUpdate) -> CompanyInvitation:
+    @audit(
+        action="UPDATE",
+        entity_type="invitation",
+        details=lambda _r, _a, kw: f"Invitation {kw['invitation_id']} mise à jour",
+        entity_id=lambda _r, _a, kw: kw["invitation_id"],
+        extra=lambda _r, _a, kw: kw["invitation_data"].model_dump(exclude_unset=True),
+    )
+    async def update_invitation(self, invitation_id: str, invitation_data: CompanyInvitationUpdate, actor: ActivityActor | None = None) -> CompanyInvitation:
         """Update an invitation"""
         try:
             session = get_db_session()
@@ -160,7 +175,14 @@ class InvitationService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating invitation: {str(e)}")
     
-    async def accept_invitation(self, token: str, user_id: str) -> InvitationResponse:
+    @audit(
+        action="ACCEPT",
+        entity_type="invitation",
+        details=lambda result, _a, kw: f"Invitation acceptée par l’utilisateur {kw['user_id']}",
+        entity_id=lambda result, _a, _kw: result.invitation.id if (hasattr(result, 'invitation') and result.invitation) else None,
+        extra=lambda _r, _a, kw: {"userId": kw["user_id"], "token": kw["token"]},
+    )
+    async def accept_invitation(self, token: str, user_id: str, actor: ActivityActor | None = None) -> InvitationResponse:
         """Accept an invitation and return response"""
         try:
             session = get_db_session()
@@ -214,7 +236,13 @@ class InvitationService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error accepting invitation: {str(e)}")
     
-    async def decline_invitation(self, token: str) -> InvitationResponse:
+    @audit(
+        action="DECLINE",
+        entity_type="invitation",
+        details=lambda _r, _a, kw: f"Invitation refusée (token {kw['token']})",
+        entity_id=lambda _r, _a, kw: kw["token"],
+    )
+    async def decline_invitation(self, token: str, actor: ActivityActor | None = None) -> InvitationResponse:
         """Decline an invitation and return response"""
         try:
             session = get_db_session()
@@ -249,7 +277,13 @@ class InvitationService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error declining invitation: {str(e)}")
     
-    async def cancel_invitation(self, invitation_id: str) -> InvitationCancelResponse:
+    @audit(
+        action="DELETE",
+        entity_type="invitation",
+        details=lambda _r, _a, kw: f"Invitation {kw['invitation_id']} annulée",
+        entity_id=lambda _r, _a, kw: kw["invitation_id"],
+    )
+    async def cancel_invitation(self, invitation_id: str, actor: ActivityActor | None = None) -> InvitationCancelResponse:
         """Cancel an invitation and return response"""
         try:
             session = get_db_session()

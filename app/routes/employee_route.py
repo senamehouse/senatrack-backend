@@ -6,6 +6,7 @@ from app.core.database import get_async_db
 from app.schemas.user_schema import User
 from app.schemas.employee_schema import Employee, EmployeeCreate, EmployeeUpdate
 from app.services.employee_service import EmployeeService
+from app.utils.activity_logger import ActivityActor
 
 
 router = APIRouter(prefix="/employees", tags=["Employees"])
@@ -41,7 +42,7 @@ async def create_employee(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    emp_id = await svc.create(company_id, payload)
+    emp_id = await svc.create(company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
     return {"message": "Employee created", "employee_id": emp_id}
 
 
@@ -53,7 +54,7 @@ async def update_employee(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.update(employee_id, company_id, payload)
+    ok = await svc.update(employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
     if not ok:
         raise HTTPException(status_code=404, detail="Employee not found")
     return {"message": "Employee updated"}
@@ -66,7 +67,7 @@ async def delete_employee(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.delete(employee_id, company_id)
+    ok = await svc.delete(employee_id=employee_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
     if not ok:
         raise HTTPException(status_code=404, detail="Employee not found")
     return {"message": "Employee deleted"}

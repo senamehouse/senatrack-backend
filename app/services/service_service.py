@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.core.database import get_db_session
 from app.models.service_model import Service as ServiceModel
 from app.schemas.service_schema import Service as ServiceSchema, ServiceCreate, ServiceUpdate
+from app.utils.activity_logger import audit, ActivityActor
 
 
 class ServiceService:
@@ -37,7 +38,14 @@ class ServiceService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving service: {str(e)}")
 
-    async def create_service(self, company_id: str, service_data: ServiceCreate) -> str:
+    @audit(
+        action="CREATE",
+        entity_type="service",
+        details=lambda result, _a, kw: f"Prestation {kw['service_data'].name} créée",
+        entity_id=lambda result, _a, _kw: result,
+        extra=lambda _r, _a, kw: {"payload": kw["service_data"].model_dump(exclude_none=True)},
+    )
+    async def create_service(self, company_id: str, service_data: ServiceCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
             service = ServiceModel(
@@ -54,7 +62,14 @@ class ServiceService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating service: {str(e)}")
 
-    async def update_service(self, service_id: str, company_id: str, service_data: ServiceUpdate) -> bool:
+    @audit(
+        action="UPDATE",
+        entity_type="service",
+        details=lambda _r, _a, kw: f"Prestation {kw['service_id']} mise à jour",
+        entity_id=lambda _r, _a, kw: kw["service_id"],
+        extra=lambda _r, _a, kw: kw["service_data"].model_dump(exclude_unset=True),
+    )
+    async def update_service(self, service_id: str, company_id: str, service_data: ServiceUpdate, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -82,7 +97,13 @@ class ServiceService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating service: {str(e)}")
 
-    async def delete_service(self, service_id: str, company_id: str) -> bool:
+    @audit(
+        action="DELETE",
+        entity_type="service",
+        details=lambda _r, _a, kw: f"Prestation {kw['service_id']} supprimée",
+        entity_id=lambda _r, _a, kw: kw["service_id"],
+    )
+    async def delete_service(self, service_id: str, company_id: str, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

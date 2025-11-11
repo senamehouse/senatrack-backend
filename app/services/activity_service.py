@@ -20,7 +20,6 @@ class ActivityService:
                 action=activity_data.action,
                 details=activity_data.details,
                 user_id=activity_data.user_id,
-                user_email=activity_data.user_email,
                 company_id=activity_data.company_id,
                 entity_type=activity_data.entity_type,
                 entity_id=activity_data.entity_id,

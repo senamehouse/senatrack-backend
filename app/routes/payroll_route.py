@@ -6,6 +6,7 @@ from app.core.database import get_async_db
 from app.schemas.user_schema import User
 from app.schemas.payroll_schema import Payroll, PayrollCreate, PayrollUpdate
 from app.services.payroll_service import PayrollService
+from app.utils.activity_logger import ActivityActor
 
 
 router = APIRouter(prefix="/payroll", tags=["Payroll"])
@@ -41,7 +42,7 @@ async def create_payroll(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    payroll_id = await svc.create(company_id, payload)
+    payroll_id = await svc.create(company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
     return {"message": "Payroll created", "payroll_id": payroll_id}
 
 
@@ -53,7 +54,7 @@ async def update_payroll(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.update(payroll_id, company_id, payload)
+    ok = await svc.update(payroll_id=payroll_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
     if not ok:
         raise HTTPException(status_code=404, detail="Payroll not found")
     return {"message": "Payroll updated"}
@@ -66,7 +67,7 @@ async def delete_payroll(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.delete(payroll_id, company_id)
+    ok = await svc.delete(payroll_id=payroll_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
     if not ok:
         raise HTTPException(status_code=404, detail="Payroll not found")
     return {"message": "Payroll deleted"}

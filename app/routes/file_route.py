@@ -8,6 +8,7 @@ from app.services.file_service import FileService
 from app.core.dependencies import get_current_user
 from app.core.database import get_async_db
 from app.schemas.user_schema import User
+from app.utils.activity_logger import ActivityActor
 
 router = APIRouter(prefix="/files", tags=["Files"])
 svc = FileService()
@@ -62,7 +63,7 @@ async def delete_file(
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
-    ok = await svc.delete_file(file_id)
+    ok = await svc.delete_file(file_id=file_id, actor=ActivityActor(current_user.id, None))
     if not ok:
         raise HTTPException(status_code=404, detail="File not found")
     return {"message": "File deleted"}

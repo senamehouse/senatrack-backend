@@ -5,6 +5,7 @@ from sqlalchemy import select, func
 from app.core.database import get_db_session
 from app.models.supplier_model import Supplier as SupplierModel
 from app.schemas.supplier_schema import Supplier as SupplierSchema, SupplierCreate, SupplierUpdate
+from app.utils.activity_logger import audit, ActivityActor
 
 
 class SupplierService:
@@ -37,7 +38,14 @@ class SupplierService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving supplier: {str(e)}")
 
-    async def create_supplier(self, company_id: str, supplier_data: SupplierCreate) -> str:
+    @audit(
+        action="CREATE",
+        entity_type="supplier",
+        details=lambda result, _a, kw: f"Fournisseur {kw['supplier_data'].name} créé",
+        entity_id=lambda result, _a, _kw: result,
+        extra=lambda _r, _a, kw: {"payload": kw["supplier_data"].model_dump(exclude_none=True)},
+    )
+    async def create_supplier(self, company_id: str, supplier_data: SupplierCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
             supplier = SupplierModel(
@@ -54,7 +62,14 @@ class SupplierService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating supplier: {str(e)}")
 
-    async def update_supplier(self, supplier_id: str, company_id: str, supplier_data: SupplierUpdate) -> bool:
+    @audit(
+        action="UPDATE",
+        entity_type="supplier",
+        details=lambda _r, _a, kw: f"Fournisseur {kw['supplier_id']} mis à jour",
+        entity_id=lambda _r, _a, kw: kw["supplier_id"],
+        extra=lambda _r, _a, kw: kw["supplier_data"].model_dump(exclude_unset=True),
+    )
+    async def update_supplier(self, supplier_id: str, company_id: str, supplier_data: SupplierUpdate, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -82,7 +97,13 @@ class SupplierService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating supplier: {str(e)}")
 
-    async def delete_supplier(self, supplier_id: str, company_id: str) -> bool:
+    @audit(
+        action="DELETE",
+        entity_type="supplier",
+        details=lambda _r, _a, kw: f"Fournisseur {kw['supplier_id']} supprimé",
+        entity_id=lambda _r, _a, kw: kw["supplier_id"],
+    )
+    async def delete_supplier(self, supplier_id: str, company_id: str, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

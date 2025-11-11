@@ -10,6 +10,7 @@ from app.schemas.company_role_schema import (
     CompanyRoleDeleteResponse, CompanyRoleAssignResponse, CompanyRoleRemoveResponse
 )
 from app.services.company_role_service import CompanyRoleService
+from app.utils.activity_logger import ActivityActor
 
 router = APIRouter(prefix="/companies", tags=["Company Roles"])
 company_role_service = CompanyRoleService()
@@ -23,7 +24,7 @@ async def create_company_role(
 ):
     """Create a new company role"""
     # TODO: Add company permission check
-    return await company_role_service.create_role(company_id, role_data)
+    return await company_role_service.create_role(company_id=company_id, role_data=role_data, actor=ActivityActor(current_user.id, None))
 
 @router.get("/{company_id}/roles/", response_model=List[UserCompanyRole])
 async def get_company_roles(
@@ -66,7 +67,7 @@ async def update_company_role(
 ):
     """Update a company role"""
     # TODO: Add company permission check
-    return await company_role_service.update_role(company_id, role_id, role_data)
+    return await company_role_service.update_role(company_id=company_id, role_id=role_id, role_data=role_data, actor=ActivityActor(current_user.id, None))
 
 @router.delete("/{company_id}/roles/{role_id}", response_model=CompanyRoleDeleteResponse)
 async def delete_company_role(
@@ -77,7 +78,7 @@ async def delete_company_role(
 ):
     """Delete a company role"""
     # TODO: Add company permission check
-    return await company_role_service.delete_role(company_id, role_id)
+    return await company_role_service.delete_role(company_id=company_id, role_id=role_id, actor=ActivityActor(current_user.id, None))
 
 @router.post("/{company_id}/roles/{role_id}/assign", response_model=CompanyRoleAssignResponse)
 async def assign_company_role_to_user(
@@ -89,12 +90,7 @@ async def assign_company_role_to_user(
 ):
     """Assign a company role to a user"""
     # TODO: Add company permission check
-    return await company_role_service.assign_role_to_user(
-        assignment_data.user_id,
-        company_id,
-        role_id,
-        current_user.id
-    )
+    return await company_role_service.assign_role_to_user(user_id=assignment_data.user_id, company_id=company_id, role_id=role_id, assigned_by=current_user.id, actor=ActivityActor(current_user.id, None))
 
 @router.delete("/{company_id}/roles/{role_id}/assign/{user_id}", response_model=CompanyRoleRemoveResponse)
 async def remove_company_role_from_user(
@@ -106,7 +102,7 @@ async def remove_company_role_from_user(
 ):
     """Remove a company role from a user"""
     # TODO: Add company permission check
-    return await company_role_service.remove_role_from_user(user_id, company_id, role_id)
+    return await company_role_service.remove_role_from_user(user_id=user_id, company_id=company_id, role_id=role_id, actor=ActivityActor(current_user.id, None))
 
 @router.get("/{company_id}/users/{user_id}/roles", response_model=List[UserCompanyRole])
 async def get_user_company_roles(

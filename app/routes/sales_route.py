@@ -16,6 +16,7 @@ from app.schemas.stats_schema import (
     ClientSalesStats,
 )
 from app.services.sales_service import SalesService
+from app.utils.activity_logger import ActivityActor
 
 
 router = APIRouter(prefix="/sales", tags=["Sales"])
@@ -51,7 +52,7 @@ async def create_sale(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    sale_id = await svc.create(company_id, payload)
+    sale_id = await svc.create(company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
     return {"message": "Sale created", "sale_id": sale_id}
 
 
@@ -63,7 +64,7 @@ async def update_sale(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.update(sale_id, company_id, payload)
+    ok = await svc.update(sale_id=sale_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
     if not ok:
         raise HTTPException(status_code=404, detail="Sale not found")
     return {"message": "Sale updated"}
@@ -76,7 +77,7 @@ async def delete_sale(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.delete(sale_id, company_id)
+    ok = await svc.delete(sale_id=sale_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
     if not ok:
         raise HTTPException(status_code=404, detail="Sale not found")
     return {"message": "Sale deleted"}

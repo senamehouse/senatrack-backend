@@ -5,6 +5,7 @@ from sqlalchemy import select, func
 from app.core.database import get_db_session
 from app.models.purchase_order_model import PurchaseOrder as PurchaseOrderModel
 from app.schemas.purchase_order_schema import PurchaseOrder as PurchaseOrderSchema, PurchaseOrderCreate, PurchaseOrderUpdate
+from app.utils.activity_logger import audit, ActivityActor
 
 
 class PurchaseOrderService:
@@ -33,7 +34,14 @@ class PurchaseOrderService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving purchase order: {str(e)}")
 
-    async def create(self, company_id: str, payload: PurchaseOrderCreate) -> str:
+    @audit(
+        action="CREATE",
+        entity_type="purchase_order",
+        details=lambda result, _a, kw: f"Bon de commande {kw['payload'].order_number} créé",
+        entity_id=lambda result, _a, _kw: result,
+        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(exclude_none=True)},
+    )
+    async def create(self, company_id: str, payload: PurchaseOrderCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
             po = PurchaseOrderModel(
@@ -50,7 +58,14 @@ class PurchaseOrderService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating purchase order: {str(e)}")
 
-    async def update(self, order_id: str, company_id: str, payload: PurchaseOrderUpdate) -> bool:
+    @audit(
+        action="UPDATE",
+        entity_type="purchase_order",
+        details=lambda _r, _a, kw: f"Bon de commande {kw['order_id']} mis à jour",
+        entity_id=lambda _r, _a, kw: kw["order_id"],
+        extra=lambda _r, _a, kw: kw["payload"].model_dump(exclude_unset=True),
+    )
+    async def update(self, order_id: str, company_id: str, payload: PurchaseOrderUpdate, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -71,7 +86,13 @@ class PurchaseOrderService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating purchase order: {str(e)}")
 
-    async def delete(self, order_id: str, company_id: str) -> bool:
+    @audit(
+        action="DELETE",
+        entity_type="purchase_order",
+        details=lambda _r, _a, kw: f"Bon de commande {kw['order_id']} supprimé",
+        entity_id=lambda _r, _a, kw: kw["order_id"],
+    )
+    async def delete(self, order_id: str, company_id: str, actor: ActivityActor | None = None) -> bool:
         try:
             session = get_db_session()
             result = await session.execute(

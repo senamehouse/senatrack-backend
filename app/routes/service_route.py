@@ -6,6 +6,7 @@ from app.core.database import get_async_db
 from app.schemas.user_schema import User
 from app.schemas.service_schema import Service as ServiceSchema, ServiceCreate, ServiceUpdate
 from app.services.service_service import ServiceService
+from app.utils.activity_logger import ActivityActor
 
 
 router = APIRouter(prefix="/services", tags=["Services"])
@@ -41,7 +42,7 @@ async def create_service(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    service_id = await svc.create_service(company_id, payload)
+    service_id = await svc.create_service(company_id=company_id, service_data=payload, actor=ActivityActor(current_user.id, None))
     return {"message": "Service created", "service_id": service_id}
 
 
@@ -53,7 +54,7 @@ async def update_service(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.update_service(service_id, company_id, payload)
+    ok = await svc.update_service(service_id=service_id, company_id=company_id, service_data=payload, actor=ActivityActor(current_user.id, None))
     if not ok:
         raise HTTPException(status_code=404, detail="Service not found")
     return {"message": "Service updated"}
@@ -66,7 +67,7 @@ async def delete_service(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.delete_service(service_id, company_id)
+    ok = await svc.delete_service(service_id=service_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
     if not ok:
         raise HTTPException(status_code=404, detail="Service not found")
     return {"message": "Service deleted"}
