@@ -45,5 +45,35 @@ class Employee(EmployeeBase):
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
 
+# Department schemas
+class DepartmentBase(BaseCamelModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    manager_id: Optional[str] = Field(None, alias="managerId")
+    budget: Optional[float] = Field(None, ge=0)
+    location: Optional[str] = Field(None, max_length=255)
+
+
+class DepartmentCreate(DepartmentBase):
+    pass
+
+
+class DepartmentUpdate(BaseCamelModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    manager_id: Optional[str] = Field(None, alias="managerId")
+    budget: Optional[float] = Field(None, ge=0)
+    location: Optional[str] = Field(None, max_length=255)
+    is_active: Optional[bool] = Field(None, alias="isActive")
+
+
+class Department(DepartmentBase):
+    id: str
+    company_id: Optional[str] = Field(None, alias="companyId")
+    is_active: bool = Field(True, alias="isActive")
+    created_at: datetime = Field(..., alias="createdAt")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+
 
 

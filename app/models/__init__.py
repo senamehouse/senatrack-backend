@@ -17,6 +17,7 @@ from app.models.sales_model import Sale, SaleItem
 from app.models.purchase_order_model import PurchaseOrder
 from app.models.reception_model import Reception
 from app.models.employee_model import Employee
+from app.models.department_model import Department
 from app.models.leave_model import LeaveRequest
 from app.models.payroll_model import Payroll
 from app.models.performance_model import PerformanceReview
@@ -31,6 +32,6 @@ __all__ = [
     "Company", "CompanyMember",
     "Proforma", "CompanyInvitation", "ActivationKey",
     "Service", "StockMovement", "StockMovementItem", "Sale", "SaleItem",
-    "PurchaseOrder", "Reception", "Employee", "LeaveRequest", "Payroll", "PerformanceReview",
+    "PurchaseOrder", "Reception", "Employee", "Department", "LeaveRequest", "Payroll", "PerformanceReview",
     "FileRecord", "UserRole", "UserRoleAssignment", "UserCompanyRole", "UserCompanyRoleAssignment"
 ]

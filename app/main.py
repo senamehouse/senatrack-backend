@@ -63,6 +63,20 @@ async def startup_event():
     """Initialize database on startup"""
     await init_database()
 
+@app.get("/")
+async def root():
+    """Root endpoint - API welcome message"""
+    return {
+        "status": "success",
+        "message": "SenaTrack API is running",
+        "version": settings.PROJECT_VERSION,
+        "endpoints": {
+            "health": "/health",
+            "docs": "/docs",
+            "database_info": "/database-info"
+        }
+    }
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}

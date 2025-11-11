@@ -19,7 +19,7 @@ class ServiceService:
                 )
             )
             services = result.scalars().all()
-            return [ServiceSchema(**s.to_dict()) for s in services]
+            return [ServiceSchema.model_validate(s.to_dict()) for s in services]
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving services: {str(e)}")
 
@@ -34,7 +34,7 @@ class ServiceService:
                 )
             )
             service = result.scalar_one_or_none()
-            return ServiceSchema(**service.to_dict()) if service else None
+            return ServiceSchema.model_validate(service.to_dict()) if service else None
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving service: {str(e)}")
 
