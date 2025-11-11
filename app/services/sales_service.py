@@ -4,9 +4,19 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 from app.core.database import get_db_session
-from app.models.sales_model import Sale as SaleModel
+from app.models.sales_model import Sale as SaleModel, SaleItem as SaleItemModel
 from app.models.user_model import User as UserModel
-from app.schemas.sales_schema import Sale as SaleSchema, SaleCreate, SaleUpdate
+from app.schemas.sales_schema import (
+    Sale as SaleSchema, 
+    SaleCreate, 
+    SaleUpdate, 
+    SaleProfit,
+)
+from app.schemas.stats_schema import (
+    SalesReportStats,
+    TopProductProfit,
+    ClientSalesStats,
+)
 
 
 class SalesService:
@@ -45,7 +55,11 @@ class SalesService:
                     sale_dict["seller_name"] = sellers_dict[sale.seller_id]
                 else:
                     sale_dict["seller_name"] = None
-                sales_data.append(SaleSchema(**sale_dict))
+                # Create schema with backend enum values
+                sale_schema = SaleSchema(**sale_dict)
+                # Convert to dict (automatic camelCase via BaseCamelModel)
+                sale_response = sale_schema.model_dump()
+                sales_data.append(sale_response)
             
             return sales_data
         except Exception as e:
@@ -55,12 +69,12 @@ class SalesService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(SaleModel).where(
+                select(SaleModel).options(joinedload(SaleModel.items)).where(
                     SaleModel.id == sale_id,
                     SaleModel.company_id == company_id,
                 )
             )
-            sale = result.scalar_one_or_none()
+            sale = result.unique().scalar_one_or_none()
             if not sale:
                 return None
             
@@ -75,7 +89,83 @@ class SalesService:
             else:
                 sale_dict["seller_name"] = None
             
-            return SaleSchema(**sale_dict)
+            # Include items - use schema for proper camelCase conversion
+            from app.schemas.sales_schema import SaleItemResponse
+            items_data = []
+            for item in sale.items:
+                item_dict = item.to_dict()
+                # Create schema instance for proper camelCase conversion
+                item_response = SaleItemResponse(
+                    item_id=item_dict["product_id"],
+                    item_name=item_dict["product_name"],
+                    item_reference=item_dict.get("product_reference", ""),
+                    item_type=item_dict.get("item_type", "product"),
+                    quantity=item_dict["quantity"],
+                    unit_price=item_dict["unit_price"],
+                    original_unit_price=item_dict.get("original_unit_price"),
+                    total=item_dict["total"],
+                    unit=item_dict.get("unit", ""),
+                    price_modified=item_dict.get("price_modified", False),
+                )
+                items_data.append(item_response.model_dump())
+            sale_dict["items"] = items_data
+            
+            # Create schema first with backend enum values
+            sale_schema = SaleSchema(**sale_dict)
+            # Convert to dict (automatic camelCase via BaseCamelModel)
+            sale_response = sale_schema.model_dump()
+            
+            # Calculate profit
+            from app.models.product_model import Product as ProductModel
+            from app.schemas.sales_schema import SaleProfit, SaleProfitItem, SaleProfitItemInfo
+            total_cost = 0
+            total_profit = 0
+            items_profit = []
+            
+            for item in sale.items:
+                item_cost = 0
+                item_profit = 0
+                
+                if item.item_type == "product":
+                    product_result = await session.execute(
+                        select(ProductModel).where(ProductModel.id == item.product_id)
+                    )
+                    product = product_result.scalar_one_or_none()
+                    if product:
+                        item_cost = product.buy_price * item.quantity
+                        item_profit = item.total - item_cost
+                elif item.item_type == "service":
+                    # For services, assume 30% cost
+                    item_cost = item.total * 0.3
+                    item_profit = item.total - item_cost
+                
+                total_cost += item_cost
+                total_profit += item_profit
+                
+                # Create schema instances
+                item_info = SaleProfitItemInfo(
+                    item_id=item.product_id,
+                    item_name=item.product_name,
+                    quantity=item.quantity
+                )
+                profit_item = SaleProfitItem(
+                    item=item_info,
+                    cost=item_cost,
+                    profit=item_profit,
+                    margin=(item_profit / item.total * 100) if item.total > 0 else 0
+                )
+                items_profit.append(profit_item)
+            
+            average_margin = (total_profit / sale.total * 100) if sale.total > 0 else 0
+            profit_schema = SaleProfit(
+                totalCost=total_cost,
+                totalProfit=total_profit,
+                averageMargin=average_margin,
+                items=items_profit
+            )
+            sale_response["profit"] = profit_schema.model_dump()
+            
+            return sale_response
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving sale: {str(e)}")
 
@@ -104,6 +194,25 @@ class SalesService:
             session.add(sale)
             await session.commit()
             await session.refresh(sale)
+            
+            # Add sale items
+            for item in payload.items:
+                sale_item = SaleItemModel(
+                    sale_id=sale.id,
+                    product_id=item.product_id,
+                    product_name=item.product_name,
+                    product_reference=getattr(item, 'product_reference', None),
+                    item_type=getattr(item, 'item_type', 'product') or 'product',
+                    quantity=item.quantity,
+                    unit_price=item.unit_price,
+                    original_unit_price=getattr(item, 'original_unit_price', None),
+                    total=item.total_price,
+                    unit=getattr(item, 'unit', None),
+                    price_modified=getattr(item, 'price_modified', False),
+                )
+                session.add(sale_item)
+            await session.commit()
+            
             return sale.id
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating sale: {str(e)}")
@@ -174,23 +283,23 @@ class SalesService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error generating sale reference: {str(e)}")
 
-    async def calculate_sale_profit(self, sale_id: str, company_id: str) -> dict:
+    async def calculate_sale_profit(self, sale_id: str, company_id: str) -> SaleProfit:
         """Calculate profit for a sale based on product costs and sale prices"""
         try:
             session = get_db_session()
             # Get the sale with items
             result = await session.execute(
-                select(SaleModel).where(
+                select(SaleModel).options(joinedload(SaleModel.items)).where(
                     SaleModel.id == sale_id,
                     SaleModel.company_id == company_id
                 )
             )
-            sale = result.scalar_one_or_none()
+            sale = result.unique().scalar_one_or_none()
             if not sale:
                 raise HTTPException(status_code=404, detail="Sale not found")
             
-            # Import here to avoid circular imports
             from app.models.product_model import Product as ProductModel
+            from app.schemas.sales_schema import SaleProfit, SaleProfitItem, SaleProfitItemInfo
             
             total_cost = 0
             total_profit = 0
@@ -198,38 +307,336 @@ class SalesService:
             
             # Calculate profit for each item
             for item in sale.items:
-                # Get product cost
-                product_result = await session.execute(
-                    select(ProductModel).where(ProductModel.id == item.item_id)
-                )
-                product = product_result.scalar_one_or_none()
+                item_cost = 0
+                item_profit = 0
                 
-                if product:
-                    item_cost = product.buy_price * item.quantity
+                if item.item_type == "product":
+                    product_result = await session.execute(
+                        select(ProductModel).where(ProductModel.id == item.product_id)
+                    )
+                    product = product_result.scalar_one_or_none()
+                    if product:
+                        item_cost = product.buy_price * item.quantity
+                        item_profit = item.total - item_cost
+                elif item.item_type == "service":
+                    # For services, assume 30% cost
+                    item_cost = item.total * 0.3
                     item_profit = item.total - item_cost
-                    total_cost += item_cost
-                    total_profit += item_profit
-                    
-                    items_profit.append({
-                        "item": {
-                            "itemId": item.item_id,
-                            "itemName": item.item_name,
-                            "quantity": item.quantity
-                        },
-                        "cost": item_cost,
-                        "profit": item_profit,
-                        "margin": (item_profit / item.total * 100) if item.total > 0 else 0
-                    })
+                
+                total_cost += item_cost
+                total_profit += item_profit
+                
+                # Create schema instances
+                item_info = SaleProfitItemInfo(
+                    item_id=item.product_id,
+                    item_name=item.product_name,
+                    quantity=item.quantity
+                )
+                profit_item = SaleProfitItem(
+                    item=item_info,
+                    cost=item_cost,
+                    profit=item_profit,
+                    margin=(item_profit / item.total * 100) if item.total > 0 else 0
+                )
+                items_profit.append(profit_item)
             
             average_margin = (total_profit / sale.total * 100) if sale.total > 0 else 0
             
-            return {
-                "totalCost": total_cost,
-                "totalProfit": total_profit,
-                "averageMargin": average_margin,
-                "items": items_profit
-            }
+            return SaleProfit(
+                totalCost=total_cost,
+                totalProfit=total_profit,
+                averageMargin=average_margin,
+                items=items_profit
+            )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error calculating sale profit: {str(e)}")
+
+    async def get_sales_report_stats(
+        self,
+        company_id: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        client_id: Optional[str] = None
+    ) -> SalesReportStats:
+        """Get detailed report statistics with filters"""
+        try:
+            session = get_db_session()
+            
+            # Build query
+            query = select(SaleModel).options(joinedload(SaleModel.items)).where(
+                SaleModel.company_id == company_id
+            )
+            
+            if start_date:
+                query = query.where(SaleModel.date >= datetime.fromisoformat(start_date))
+            if end_date:
+                query = query.where(SaleModel.date <= datetime.fromisoformat(end_date))
+            if client_id:
+                query = query.where(SaleModel.client_id == client_id)
+            
+            result = await session.execute(query)
+            sales = result.unique().scalars().all()
+            
+            # Calculate stats from sales with profit data
+            total_revenue = 0.0
+            total_cost = 0.0
+            total_profit = 0.0
+            total_quantity = 0
+            unique_clients = set()
+            all_items = []
+            product_stats = {}
+            modified_items_count = 0
+            total_price_difference = 0.0
+            
+            for sale in sales:
+                total_revenue += sale.total or 0.0
+                if sale.client_id:
+                    unique_clients.add(sale.client_id)
+                
+                # Calculate profit for this sale
+                profit_data = await self.calculate_sale_profit(sale.id, company_id)
+                total_cost += profit_data.totalCost
+                total_profit += profit_data.totalProfit
+                
+                # Process items
+                for item in sale.items:
+                    total_quantity += item.quantity
+                    all_items.append(item)
+                    
+                    if item.price_modified:
+                        modified_items_count += 1
+                        original_total = (item.original_unit_price or item.unit_price) * item.quantity
+                        total_price_difference += (item.total - original_total)
+                    
+                    # Aggregate product stats
+                    if item.item_type == "product":
+                        product_id = item.product_id
+                        if product_id not in product_stats:
+                            product_stats[product_id] = {
+                                "product_name": item.product_name,
+                                "total_quantity": 0,
+                                "total_revenue": 0.0,
+                                "total_cost": 0.0,
+                                "total_profit": 0.0,
+                            }
+                        
+                        product_stats[product_id]["total_quantity"] += item.quantity
+                        product_stats[product_id]["total_revenue"] += item.total
+                        
+                        # Get cost from profit data
+                        for profit_item in profit_data.items:
+                            if profit_item.item.item_id == product_id:
+                                product_stats[product_id]["total_cost"] += profit_item.cost
+                                product_stats[product_id]["total_profit"] += profit_item.profit
+                                break
+            
+            # Calculate averages
+            total_sales = len(sales)
+            average_sale = total_revenue / total_sales if total_sales > 0 else 0.0
+            average_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0.0
+            price_modification_rate = (modified_items_count / len(all_items) * 100) if all_items else 0.0
+            
+            # Build top products list
+            top_products = []
+            for product_id, stats in product_stats.items():
+                avg_margin = (stats["total_profit"] / stats["total_revenue"] * 100) if stats["total_revenue"] > 0 else 0.0
+                top_products.append(TopProductProfit(
+                    product_id=product_id,
+                    product_name=stats["product_name"],
+                    total_quantity=stats["total_quantity"],
+                    total_revenue=stats["total_revenue"],
+                    total_cost=stats["total_cost"],
+                    total_profit=stats["total_profit"],
+                    average_margin=avg_margin
+                ))
+            
+            # Sort by profit and take top 10
+            top_products.sort(key=lambda x: x.total_profit, reverse=True)
+            top_products = top_products[:10]
+            
+            return SalesReportStats(
+                total_revenue=total_revenue,
+                total_cost=total_cost,
+                total_profit=total_profit,
+                average_margin=average_margin,
+                total_sales=total_sales,
+                total_quantity=total_quantity,
+                average_sale=average_sale,
+                unique_clients=len(unique_clients),
+                top_products=top_products,
+                price_modification_rate=price_modification_rate,
+                total_price_difference=total_price_difference
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error calculating sales report stats: {str(e)}")
+
+    async def get_client_sales_stats(
+        self,
+        company_id: str,
+        client_id: str
+    ) -> ClientSalesStats:
+        """Get statistics for a specific client"""
+        try:
+            session = get_db_session()
+            
+            # Get all sales for this client
+            result = await session.execute(
+                select(SaleModel).options(joinedload(SaleModel.items)).where(
+                    SaleModel.company_id == company_id,
+                    SaleModel.client_id == client_id
+                )
+            )
+            sales = result.unique().scalars().all()
+            
+            if not sales:
+                # Get client name
+                from app.models.client_model import Client as ClientModel
+                client_result = await session.execute(
+                    select(ClientModel).where(
+                        ClientModel.id == client_id,
+                        ClientModel.company_id == company_id
+                    )
+                )
+                client = client_result.scalar_one_or_none()
+                client_name = client.name if client else "Unknown"
+                
+                return ClientSalesStats(
+                    client_id=client_id,
+                    client_name=client_name,
+                    total_sales=0,
+                    total_sold=0.0,
+                    total_paid=0.0,
+                    total_debt=0.0,
+                    total_profit=0.0,
+                    average_margin=0.0,
+                    paid_sales=0,
+                    partial_sales=0,
+                    unpaid_sales=0
+                )
+            
+            # Get client name from first sale
+            client_name = sales[0].client_name or "Unknown"
+            
+            # Calculate stats
+            total_sold = sum(sale.total or 0.0 for sale in sales)
+            total_paid = sum(sale.amount_paid or 0.0 for sale in sales)
+            total_debt = total_sold - total_paid
+            total_profit = 0.0
+            total_cost = 0.0
+            
+            paid_sales = 0
+            partial_sales = 0
+            unpaid_sales = 0
+            
+            for sale in sales:
+                # Calculate profit for this sale
+                profit_data = await self.calculate_sale_profit(sale.id, company_id)
+                total_profit += profit_data.totalProfit
+                total_cost += profit_data.totalCost
+                
+                # Count payment status
+                if sale.payment_status == "paid" and sale.amount_paid >= sale.total:
+                    paid_sales += 1
+                elif sale.payment_status == "partial" or (sale.amount_paid > 0 and sale.amount_paid < sale.total):
+                    partial_sales += 1
+                else:
+                    unpaid_sales += 1
+            
+            total_revenue = total_sold
+            average_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0.0
+            
+            return ClientSalesStats(
+                client_id=client_id,
+                client_name=client_name,
+                total_sales=len(sales),
+                total_sold=total_sold,
+                total_paid=total_paid,
+                total_debt=total_debt,
+                total_profit=total_profit,
+                average_margin=average_margin,
+                paid_sales=paid_sales,
+                partial_sales=partial_sales,
+                unpaid_sales=unpaid_sales
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error calculating client sales stats: {str(e)}")
+
+    async def get_top_profitable_products(
+        self,
+        company_id: str,
+        limit: int = 10,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> List[TopProductProfit]:
+        """Get top profitable products"""
+        try:
+            session = get_db_session()
+            
+            # Build query
+            query = select(SaleModel).options(joinedload(SaleModel.items)).where(
+                SaleModel.company_id == company_id
+            )
+            
+            if start_date:
+                query = query.where(SaleModel.date >= datetime.fromisoformat(start_date))
+            if end_date:
+                query = query.where(SaleModel.date <= datetime.fromisoformat(end_date))
+            
+            result = await session.execute(query)
+            sales = result.unique().scalars().all()
+            
+            # Aggregate product stats
+            product_stats = {}
+            
+            for sale in sales:
+                # Calculate profit data for this sale
+                profit_data = await self.calculate_sale_profit(sale.id, company_id)
+                
+                # Map profit items by product_id
+                profit_by_product = {}
+                for profit_item in profit_data.items:
+                    profit_by_product[profit_item.item.item_id] = profit_item
+                
+                # Process sale items
+                for item in sale.items:
+                    if item.item_type == "product":
+                        product_id = item.product_id
+                        if product_id not in product_stats:
+                            product_stats[product_id] = {
+                                "product_name": item.product_name,
+                                "total_quantity": 0,
+                                "total_revenue": 0.0,
+                                "total_cost": 0.0,
+                                "total_profit": 0.0,
+                            }
+                        
+                        product_stats[product_id]["total_quantity"] += item.quantity
+                        product_stats[product_id]["total_revenue"] += item.total
+                        
+                        # Get cost and profit from profit data
+                        if product_id in profit_by_product:
+                            profit_item = profit_by_product[product_id]
+                            product_stats[product_id]["total_cost"] += profit_item.cost
+                            product_stats[product_id]["total_profit"] += profit_item.profit
+            
+            # Build and sort results
+            top_products = []
+            for product_id, stats in product_stats.items():
+                avg_margin = (stats["total_profit"] / stats["total_revenue"] * 100) if stats["total_revenue"] > 0 else 0.0
+                top_products.append(TopProductProfit(
+                    product_id=product_id,
+                    product_name=stats["product_name"],
+                    total_quantity=stats["total_quantity"],
+                    total_revenue=stats["total_revenue"],
+                    total_cost=stats["total_cost"],
+                    total_profit=stats["total_profit"],
+                    average_margin=avg_margin
+                ))
+            
+            # Sort by profit and return top N
+            top_products.sort(key=lambda x: x.total_profit, reverse=True)
+            return top_products[:limit]
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error getting top profitable products: {str(e)}")
 
 

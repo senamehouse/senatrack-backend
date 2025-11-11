@@ -28,7 +28,7 @@ from app.routes.file_route import router as file_router
 from app.routes.user_role_route import router as user_role_router
 from app.routes.company_role_route import router as company_role_router
 from app.routes.migration_route import router as migration_router
-from app.routes.dashboard_route import router as dashboard_router
+from app.routes.stats_route import router as stats_router
 
 from app.core.database import init_database, get_database_info
 # Import all models to ensure they're registered with Base.metadata
@@ -98,4 +98,4 @@ app.include_router(file_router)
 app.include_router(user_role_router)
 app.include_router(company_role_router)
 app.include_router(migration_router)
-app.include_router(dashboard_router)
+app.include_router(stats_router)

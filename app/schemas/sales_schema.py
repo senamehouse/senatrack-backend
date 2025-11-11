@@ -25,6 +25,11 @@ class SaleItemBase(BaseCamelModel):
     quantity: int
     unit_price: float
     total_price: float
+    item_type: Optional[str] = "product"  # product|service
+    product_reference: Optional[str] = None
+    unit: Optional[str] = None
+    original_unit_price: Optional[float] = None
+    price_modified: Optional[bool] = False
 
 
 class SaleItemCreate(SaleItemBase):
@@ -34,6 +39,20 @@ class SaleItemCreate(SaleItemBase):
 class SaleItem(SaleItemBase):
     id: str
     sale_id: str
+
+
+class SaleItemResponse(BaseCamelModel):
+    """Response schema for sale items with frontend field names"""
+    item_id: str
+    item_name: str
+    item_reference: Optional[str] = None
+    item_type: str
+    quantity: int
+    unit_price: float
+    original_unit_price: Optional[float] = None
+    total: float
+    unit: Optional[str] = None
+    price_modified: bool = False
 
 
 class SaleBase(BaseCamelModel):
@@ -79,9 +98,31 @@ class SaleUpdate(BaseCamelModel):
     print_after_creation: Optional[bool] = None
 
 
+class SaleProfitItemInfo(BaseCamelModel):
+    item_id: str
+    item_name: str
+    quantity: int
+
+
+class SaleProfitItem(BaseCamelModel):
+    item: SaleProfitItemInfo
+    cost: float
+    profit: float
+    margin: float
+
+
+class SaleProfit(BaseCamelModel):
+    totalCost: float
+    totalProfit: float
+    averageMargin: float
+    items: List[SaleProfitItem] = []
+
+
 class Sale(SaleBase):
     id: str
     company_id: str
     created_at: datetime
     updated_at: Optional[datetime] = None
     items: List[SaleItem] = []
+    profit: Optional[SaleProfit] = None
+

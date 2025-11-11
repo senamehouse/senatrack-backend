@@ -13,7 +13,7 @@ from app.models.supplier_model import Supplier
 from app.models.client_model import Client
 from app.models.service_model import Service
 from app.models.stock_movement_model import StockMovement, StockMovementItem
-from app.models.sales_model import Sale
+from app.models.sales_model import Sale, SaleItem
 from app.models.purchase_order_model import PurchaseOrder
 from app.models.reception_model import Reception
 from app.models.employee_model import Employee
@@ -30,7 +30,7 @@ __all__ = [
     "ActivityLog", "Supplier", "Client",
     "Company", "CompanyMember",
     "Proforma", "CompanyInvitation", "ActivationKey",
-    "Service", "StockMovement", "StockMovementItem", "Sale",
+    "Service", "StockMovement", "StockMovementItem", "Sale", "SaleItem",
     "PurchaseOrder", "Reception", "Employee", "LeaveRequest", "Payroll", "PerformanceReview",
     "FileRecord", "UserRole", "UserRoleAssignment", "UserCompanyRole", "UserCompanyRoleAssignment"
 ]
