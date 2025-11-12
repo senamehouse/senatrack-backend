@@ -2,6 +2,7 @@
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi import APIRouter
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.core.settings import settings
 from app.routes.user_route import router as user_router
 from app.routes.sync_route import router as sync_router
@@ -13,11 +14,7 @@ from app.routes.service_route import router as service_router
 from app.routes.stock_movement_route import router as stock_movement_router
 from app.routes.sales_route import router as sales_router
 from app.routes.purchase_order_route import router as purchase_order_router
-from app.routes.reception_route import router as reception_router
 from app.routes.employee_route import router as employee_router
-from app.routes.leave_route import router as leave_router
-from app.routes.payroll_route import router as payroll_router
-from app.routes.performance_route import router as performance_router
 from app.routes.utils_route import router as utils_router
 from app.routes.activity_route import router as activity_router
 from app.routes.company_route import router as company_router
@@ -64,18 +61,15 @@ async def startup_event():
     await init_database()
 
 @app.get("/")
-async def root():
-    """Root endpoint - API welcome message"""
-    return {
-        "status": "success",
-        "message": "SenaTrack API is running",
+@app.head("/")
+async def health_check():
+    """Health check endpoint to verify API status"""
+    return JSONResponse(content={
+        "status": "healthy",
+        "service": settings.PROJECT_NAME,
         "version": settings.PROJECT_VERSION,
-        "endpoints": {
-            "health": "/health",
-            "docs": "/docs",
-            "database_info": "/database-info"
-        }
-    }
+        "mode": settings.DATABASE_MODE
+    })
 
 @app.get("/health")
 async def health():
@@ -97,11 +91,7 @@ app.include_router(service_router)
 app.include_router(stock_movement_router)
 app.include_router(sales_router)
 app.include_router(purchase_order_router)
-app.include_router(reception_router)
 app.include_router(employee_router)
-app.include_router(leave_router)
-app.include_router(payroll_router)
-app.include_router(performance_router)
 app.include_router(utils_router)
 app.include_router(activity_router)
 app.include_router(company_router)

@@ -4,8 +4,8 @@ from fastapi import HTTPException
 from app.core.database import get_db_session
 from app.models.user_model import User
 from app.models.company_model import CompanyMember
-from app.models.user_role_model import UserRole, UserRoleAssignment
-from app.models.company_role_model import UserCompanyRole, UserCompanyRoleAssignment
+from app.models.user_model import UserRoleModel, UserRoleAssignmentModel
+from app.models.company_model import UserCompanyRoleModel, UserCompanyRoleAssignmentModel
 from app.schemas.user_role_schema import DEFAULT_PLATFORM_ROLES
 from app.schemas.company_role_schema import DEFAULT_COMPANY_ROLES
 from datetime import datetime
@@ -25,13 +25,13 @@ class MigrationService:
 
             # Get platform_admin role (should exist after creating presets)
             admin_role_result = await session.execute(
-                select(UserRole).where(UserRole.name == "Platform Administrator")
+                select(UserRoleModel).where(UserRoleModel.name == "Platform Administrator")
             )
             admin_role = admin_role_result.scalar_one_or_none()
 
             # Get regular_user role
             user_role_result = await session.execute(
-                select(UserRole).where(UserRole.name == "Regular User")
+                select(UserRoleModel).where(UserRoleModel.name == "Regular User")
             )
             user_role = user_role_result.scalar_one_or_none()
 
@@ -44,7 +44,7 @@ class MigrationService:
             for user in users:
                 # Check if user already has role assignments
                 existing_assignments = await session.execute(
-                    select(UserRoleAssignment).where(UserRoleAssignment.user_id == user.id)
+                    select(UserRoleAssignmentModel).where(UserRoleAssignmentModel.user_id == user.id)
                 )
                 if existing_assignments.scalar_one_or_none():
                     skipped_count += 1
@@ -56,7 +56,7 @@ class MigrationService:
                     role_to_assign = admin_role
 
                 # Create role assignment
-                assignment = UserRoleAssignment(
+                assignment = UserRoleAssignmentModel(
                     user_id=user.id,
                     role_id=role_to_assign.id,
                     assigned_by=None,  # System migration
@@ -94,16 +94,16 @@ class MigrationService:
 
                 # Create default presets for this company if not already done
                 if company_id not in companies_processed:
-                    from app.services.company_role_service import CompanyRoleService
-                    company_role_service = CompanyRoleService()
-                    await company_role_service.create_default_presets(company_id)
+                    from app.services.company_service import CompanyService
+                    company_service = CompanyService()
+                    await company_service.create_company_default_presets(company_id)
                     companies_processed.add(company_id)
 
                 # Check if user already has role assignments for this company
                 existing_assignments = await session.execute(
-                    select(UserCompanyRoleAssignment).where(
-                        UserCompanyRoleAssignment.user_id == member.user_id,
-                        UserCompanyRoleAssignment.company_id == company_id
+                    select(UserCompanyRoleAssignmentModel).where(
+                        UserCompanyRoleAssignmentModel.user_id == member.user_id,
+                        UserCompanyRoleAssignmentModel.company_id == company_id
                     )
                 )
                 if existing_assignments.scalar_one_or_none():
@@ -124,9 +124,9 @@ class MigrationService:
 
                 # Find the corresponding role in the company
                 role_result = await session.execute(
-                    select(UserCompanyRole).where(
-                        UserCompanyRole.company_id == company_id,
-                        UserCompanyRole.name == new_role_name
+                    select(UserCompanyRoleModel).where(
+                        UserCompanyRoleModel.company_id == company_id,
+                        UserCompanyRoleModel.name == new_role_name
                     )
                 )
                 company_role = role_result.scalar_one_or_none()
@@ -134,16 +134,16 @@ class MigrationService:
                 if not company_role:
                     # Fallback to operator role
                     role_result = await session.execute(
-                        select(UserCompanyRole).where(
-                            UserCompanyRole.company_id == company_id,
-                            UserCompanyRole.name == "Opérateur"
+                        select(UserCompanyRoleModel).where(
+                            UserCompanyRoleModel.company_id == company_id,
+                            UserCompanyRoleModel.name == "Opérateur"
                         )
                     )
                     company_role = role_result.scalar_one_or_none()
 
                 if company_role:
                     # Create role assignment
-                    assignment = UserCompanyRoleAssignment(
+                    assignment = UserCompanyRoleAssignmentModel(
                         user_id=member.user_id,
                         company_id=company_id,
                         role_id=company_role.id,
@@ -170,9 +170,9 @@ class MigrationService:
         """Run complete migration from old role system to new role system"""
         try:
             # Step 1: Create platform role presets
-            from app.services.user_role_service import UserRoleService
-            user_role_service = UserRoleService()
-            platform_roles = await user_role_service.create_default_presets()
+            from app.services.user_service import UserService
+            user_service = UserService()
+            platform_roles = await user_service.create_default_role_presets()
 
             # Step 2: Migrate user roles
             user_migration_result = await self.migrate_user_roles()
@@ -201,7 +201,7 @@ class MigrationService:
 
             # Count users with new role assignments
             new_users_result = await session.execute(
-                select(UserRoleAssignment)
+                select(UserRoleAssignmentModel)
             )
             new_users_count = len(new_users_result.scalars().all())
 
@@ -213,19 +213,19 @@ class MigrationService:
 
             # Count company members with new role assignments
             new_members_result = await session.execute(
-                select(UserCompanyRoleAssignment)
+                select(UserCompanyRoleAssignmentModel)
             )
             new_members_count = len(new_members_result.scalars().all())
 
             # Count platform roles
             platform_roles_result = await session.execute(
-                select(UserRole)
+                select(UserRoleModel)
             )
             platform_roles_count = len(platform_roles_result.scalars().all())
 
             # Count company roles
             company_roles_result = await session.execute(
-                select(UserCompanyRole)
+                select(UserCompanyRoleModel)
             )
             company_roles_count = len(company_roles_result.scalars().all())
 

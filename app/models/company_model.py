@@ -1,9 +1,10 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from app.core.database import Base
 from app.utils.id_generator import generate_id
+from sqlalchemy.sql import func
 
 class Company(Base):
     """Company model"""
@@ -34,8 +35,8 @@ class Company(Base):
     members = relationship("CompanyMember", back_populates="company", cascade="all, delete-orphan")
     
     # New role system relationships
-    company_roles = relationship("UserCompanyRole", back_populates="company", foreign_keys="UserCompanyRole.company_id", cascade="all, delete-orphan")
-    company_role_assignments = relationship("UserCompanyRoleAssignment", back_populates="company", foreign_keys="UserCompanyRoleAssignment.company_id", cascade="all, delete-orphan")
+    company_roles: Mapped[list["UserCompanyRoleModel"]] = relationship("UserCompanyRoleModel", back_populates="company", foreign_keys="UserCompanyRoleModel.company_id", cascade="all, delete-orphan")
+    company_role_assignments: Mapped[list["UserCompanyRoleAssignmentModel"]] = relationship("UserCompanyRoleAssignmentModel", back_populates="company", foreign_keys="UserCompanyRoleAssignmentModel.company_id", cascade="all, delete-orphan")
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert model to dictionary"""
@@ -92,4 +93,66 @@ class CompanyMember(Base):
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class UserCompanyRoleModel(Base):
+    """Company-specific roles for business operations"""
+    __tablename__ = "user_company_roles"
+    
+    id: Mapped[str] = mapped_column(String(20), primary_key=True, index=True, default=generate_id)
+    company_id: Mapped[str] = mapped_column(String(20), ForeignKey("companies.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    permissions: Mapped[List[str]] = mapped_column(JSON, nullable=False, default=list)
+    is_preset: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False)  # Cannot be deleted
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    company: Mapped["Company"] = relationship("Company", back_populates="company_roles", foreign_keys=[company_id])
+    assignments: Mapped[list["UserCompanyRoleAssignmentModel"]] = relationship("UserCompanyRoleAssignmentModel", back_populates="role", cascade="all, delete-orphan")
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert model to dictionary"""
+        return {
+            "id": self.id,
+            "companyId": self.company_id,
+            "name": self.name,
+            "description": self.description,
+            "permissions": self.permissions,
+            "isPreset": self.is_preset,
+            "isSystem": self.is_system,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class UserCompanyRoleAssignmentModel(Base):
+    """Links users to company roles"""
+    __tablename__ = "user_company_role_assignments"
+    
+    id: Mapped[str] = mapped_column(String(20), primary_key=True, index=True, default=generate_id)
+    user_id: Mapped[str] = mapped_column(String(20), ForeignKey("users.id"), nullable=False, index=True)
+    company_id: Mapped[str] = mapped_column(String(20), ForeignKey("companies.id"), nullable=False, index=True)
+    role_id: Mapped[str] = mapped_column(String(20), ForeignKey("user_company_roles.id"), nullable=False, index=True)
+    assigned_by: Mapped[Optional[str]] = mapped_column(String(20), ForeignKey("users.id"), nullable=True)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="company_role_assignments")
+    company: Mapped["Company"] = relationship("Company", back_populates="company_role_assignments", foreign_keys=[company_id])
+    role: Mapped["UserCompanyRoleModel"] = relationship("UserCompanyRoleModel", back_populates="assignments")
+    assigned_by_user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[assigned_by])
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert model to dictionary"""
+        return {
+            "id": self.id,
+            "userId": self.user_id,
+            "companyId": self.company_id,
+            "roleId": self.role_id,
+            "assignedBy": self.assigned_by,
+            "assignedAt": self.assigned_at.isoformat() if self.assigned_at else None
         }

@@ -1,11 +1,11 @@
 # Models package - SQLAlchemy models
-from app.models.user_model import User
+from app.models.user_model import User, UserRoleModel, UserRoleAssignmentModel
 from app.models.auth_model import RefreshToken
 from app.models.password_reset_model import PasswordResetToken
 from app.models.sync_model import SyncLog
 from app.models.product_model import Product, ProductCategory, ProductUnit
 from app.models.activity_model import ActivityLog
-from app.models.company_model import Company, CompanyMember
+from app.models.company_model import Company, CompanyMember, UserCompanyRoleModel, UserCompanyRoleAssignmentModel
 from app.models.proforma_model import Proforma
 from app.models.invitation_model import CompanyInvitation
 from app.models.activation_key_model import ActivationKey
@@ -15,15 +15,8 @@ from app.models.service_model import Service
 from app.models.stock_movement_model import StockMovement, StockMovementItem
 from app.models.sales_model import Sale, SaleItem
 from app.models.purchase_order_model import PurchaseOrder
-from app.models.reception_model import Reception
-from app.models.employee_model import Employee
-from app.models.department_model import Department
-from app.models.leave_model import LeaveRequest
-from app.models.payroll_model import Payroll
-from app.models.performance_model import PerformanceReview
+from app.models.employee_model import EmployeeModel, EmployeeDepartmentModel, EmployeeLeaveModel, EmployeePayrollModel, EmployeePerformanceReviewModel
 from app.models.file_model import FileRecord
-from app.models.user_role_model import UserRole, UserRoleAssignment
-from app.models.company_role_model import UserCompanyRole, UserCompanyRoleAssignment
 
 __all__ = [
     "User", "RefreshToken", "PasswordResetToken", "SyncLog",
@@ -32,6 +25,6 @@ __all__ = [
     "Company", "CompanyMember",
     "Proforma", "CompanyInvitation", "ActivationKey",
     "Service", "StockMovement", "StockMovementItem", "Sale", "SaleItem",
-    "PurchaseOrder", "Reception", "Employee", "Department", "LeaveRequest", "Payroll", "PerformanceReview",
-    "FileRecord", "UserRole", "UserRoleAssignment", "UserCompanyRole", "UserCompanyRoleAssignment"
+    "PurchaseOrder", "EmployeeModel", "EmployeeDepartmentModel", "EmployeeLeaveModel", "EmployeePayrollModel", "EmployeePerformanceReviewModel",
+    "FileRecord", "UserRoleModel", "UserRoleAssignmentModel", "UserCompanyRoleModel", "UserCompanyRoleAssignmentModel"
 ]

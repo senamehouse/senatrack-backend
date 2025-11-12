@@ -1,7 +1,7 @@
 from app.utils.casing import BaseCamelModel
 from pydantic import Field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 
 
 class EmployeeBase(BaseCamelModel):
@@ -11,7 +11,7 @@ class EmployeeBase(BaseCamelModel):
     last_name: str = Field(..., min_length=1, max_length=100, alias="lastName")
     email: Optional[str] = Field(None, max_length=255)
     phone: Optional[str] = Field(None, max_length=20)
-    department: Optional[str] = Field(None, max_length=100)
+    department_id: Optional[str] = Field(None, alias="departmentId")
     position: Optional[str] = Field(None, max_length=100)
     employment_status: str = Field("active", alias="employmentStatus")
     salary_amount: Optional[float] = Field(None, ge=0, alias="salaryAmount")
@@ -29,7 +29,7 @@ class EmployeeUpdate(BaseCamelModel):
     last_name: Optional[str] = Field(None, min_length=1, max_length=100, alias="lastName")
     email: Optional[str] = Field(None, max_length=255)
     phone: Optional[str] = Field(None, max_length=20)
-    department: Optional[str] = Field(None, max_length=100)
+    department_id: Optional[str] = Field(None, alias="departmentId")
     position: Optional[str] = Field(None, max_length=100)
     employment_status: Optional[str] = Field(None, alias="employmentStatus")
     salary_amount: Optional[float] = Field(None, ge=0, alias="salaryAmount")
@@ -40,13 +40,15 @@ class EmployeeUpdate(BaseCamelModel):
 class Employee(EmployeeBase):
     id: str
     company_id: Optional[str] = Field(None, alias="companyId")
+    department: Optional[str] = None  # Department name for backward compatibility
+    department_info: Optional[Dict[str, Any]] = Field(None, alias="departmentInfo")
     is_active: bool = Field(True, alias="isActive")
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
 
-# Department schemas
-class DepartmentBase(BaseCamelModel):
+# Employee Department schemas
+class EmployeeDepartmentBase(BaseCamelModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     manager_id: Optional[str] = Field(None, alias="managerId")
@@ -54,11 +56,11 @@ class DepartmentBase(BaseCamelModel):
     location: Optional[str] = Field(None, max_length=255)
 
 
-class DepartmentCreate(DepartmentBase):
+class EmployeeDepartmentCreate(EmployeeDepartmentBase):
     pass
 
 
-class DepartmentUpdate(BaseCamelModel):
+class EmployeeDepartmentUpdate(BaseCamelModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     manager_id: Optional[str] = Field(None, alias="managerId")
@@ -67,10 +69,107 @@ class DepartmentUpdate(BaseCamelModel):
     is_active: Optional[bool] = Field(None, alias="isActive")
 
 
-class Department(DepartmentBase):
+class EmployeeDepartment(EmployeeDepartmentBase):
     id: str
     company_id: Optional[str] = Field(None, alias="companyId")
     is_active: bool = Field(True, alias="isActive")
+    created_at: datetime = Field(..., alias="createdAt")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+
+# Employee Leave Request schemas
+class EmployeeLeaveRequestBase(BaseCamelModel):
+    employee_id: str = Field(..., alias="employeeId")
+    leave_type: str = Field(..., alias="leaveType")
+    status: str = Field("pending")
+    start_date: str = Field(..., alias="startDate")
+    end_date: str = Field(..., alias="endDate")
+    days_requested: int = Field(..., ge=1, alias="daysRequested")
+    reason: Optional[str] = None
+    approved_by: Optional[str] = Field(None, alias="approvedBy")
+    approved_date: Optional[str] = Field(None, alias="approvedDate")
+    rejection_reason: Optional[str] = Field(None, alias="rejectionReason")
+    requested_date: Optional[str] = Field(None, alias="requestedDate")
+
+
+class EmployeeLeaveRequestCreate(EmployeeLeaveRequestBase):
+    pass
+
+
+class EmployeeLeaveRequestUpdate(BaseCamelModel):
+    leave_type: Optional[str] = Field(None, alias="leaveType")
+    status: Optional[str] = None
+    start_date: Optional[str] = Field(None, alias="startDate")
+    end_date: Optional[str] = Field(None, alias="endDate")
+    days_requested: Optional[int] = Field(None, ge=1, alias="daysRequested")
+    reason: Optional[str] = None
+    approved_by: Optional[str] = Field(None, alias="approvedBy")
+    approved_date: Optional[str] = Field(None, alias="approvedDate")
+    rejection_reason: Optional[str] = Field(None, alias="rejectionReason")
+
+
+class EmployeeLeaveRequest(EmployeeLeaveRequestBase):
+    id: str
+    company_id: Optional[str] = Field(None, alias="companyId")
+    employee_name: Optional[str] = Field(None, alias="employeeName")
+    created_at: datetime = Field(..., alias="createdAt")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+
+# Employee Payroll schemas
+class EmployeePayrollBase(BaseCamelModel):
+    employee_id: str = Field(..., alias="employeeId")
+    period_year: int = Field(..., ge=2000, le=9999, alias="periodYear")
+    period_month: int = Field(..., ge=1, le=12, alias="periodMonth")
+    net_salary: float = Field(..., ge=0, alias="netSalary")
+    status: str = Field("pending")
+    payment_method: Optional[str] = Field(None, alias="paymentMethod")
+    paid_date: Optional[str] = Field(None, alias="paidDate")
+
+
+class EmployeePayrollCreate(EmployeePayrollBase):
+    pass
+
+
+class EmployeePayrollUpdate(BaseCamelModel):
+    period_year: Optional[int] = Field(None, ge=2000, le=9999, alias="periodYear")
+    period_month: Optional[int] = Field(None, ge=1, le=12, alias="periodMonth")
+    net_salary: Optional[float] = Field(None, ge=0, alias="netSalary")
+    status: Optional[str] = None
+    payment_method: Optional[str] = Field(None, alias="paymentMethod")
+    paid_date: Optional[str] = Field(None, alias="paidDate")
+
+
+class EmployeePayroll(EmployeePayrollBase):
+    id: str
+    company_id: Optional[str] = Field(None, alias="companyId")
+    employee_name: Optional[str] = Field(None, alias="employeeName")
+    created_at: datetime = Field(..., alias="createdAt")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+
+# Employee Performance Review schemas
+class EmployeePerformanceReviewBase(BaseCamelModel):
+    employee_id: str = Field(..., alias="employeeId")
+    reviewer_id: str = Field(..., alias="reviewerId")
+    status: str = Field("draft")
+    overall_rating: float = Field(0, ge=0, le=5, alias="overallRating")
+
+
+class EmployeePerformanceReviewCreate(EmployeePerformanceReviewBase):
+    pass
+
+
+class EmployeePerformanceReviewUpdate(BaseCamelModel):
+    status: Optional[str] = None
+    overall_rating: Optional[float] = Field(None, ge=0, le=5, alias="overallRating")
+
+
+class EmployeePerformanceReview(EmployeePerformanceReviewBase):
+    id: str
+    company_id: Optional[str] = Field(None, alias="companyId")
+    employee_name: Optional[str] = Field(None, alias="employeeName")
+    reviewer_name: Optional[str] = Field(None, alias="reviewerName")
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 

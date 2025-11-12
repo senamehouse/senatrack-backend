@@ -2,8 +2,8 @@ from fastapi import Depends, HTTPException, status, Request, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 from app.services.auth_service import AuthService
-from app.services.user_role_service import UserRoleService
-from app.services.company_role_service import CompanyRoleService
+from app.services.user_service import UserService
+from app.services.company_service import CompanyService
 from app.schemas.user_schema import User
 from app.core.settings import settings
 
@@ -13,8 +13,8 @@ optional_security = HTTPBearer(auto_error=False)
 
 # Auth service instance
 auth_service = AuthService()
-user_role_service = UserRoleService()
-company_role_service = CompanyRoleService()
+user_service = UserService()
+company_service = CompanyService()
 
 async def get_current_user(
     request: Request,
@@ -107,7 +107,7 @@ async def get_company_id_optional(
 async def require_permission(permission: str):
     """Dependency factory for requiring platform permissions"""
     async def permission_checker(current_user: User = Depends(get_current_user)) -> User:
-        has_permission = await user_role_service.check_permission(current_user.id, permission)
+        has_permission = await user_service.check_permission(current_user.id, permission)
         if not has_permission:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -122,7 +122,7 @@ async def require_company_permission(permission: str):
         current_user: User = Depends(get_current_user),
         company_id: str = Depends(get_company_id)
     ) -> User:
-        has_permission = await company_role_service.check_permission(current_user.id, company_id, permission)
+        has_permission = await company_service.check_company_permission(current_user.id, company_id, permission)
         if not has_permission:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -134,7 +134,7 @@ async def require_company_permission(permission: str):
 # Common permission dependencies
 async def require_admin_access(current_user: User = Depends(get_current_user)) -> User:
     """Dependency for requiring admin access"""
-    has_permission = await user_role_service.check_permission(current_user.id, "admin.access")
+    has_permission = await user_service.check_permission(current_user.id, "admin.access")
     if not has_permission:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -147,7 +147,7 @@ async def require_company_admin(
     company_id: str = Depends(get_company_id)
 ) -> User:
     """Dependency for requiring company admin access"""
-    has_permission = await company_role_service.check_permission(current_user.id, company_id, "company.users.manage")
+    has_permission = await company_service.check_company_permission(current_user.id, company_id, "company.users.manage")
     if not has_permission:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

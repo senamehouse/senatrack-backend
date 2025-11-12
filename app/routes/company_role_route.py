@@ -9,11 +9,11 @@ from app.schemas.company_role_schema import (
     UserCompanyRoleAssignmentCreate, CompanyPermissionCheck, CompanyPermissionCheckResponse,
     CompanyRoleDeleteResponse, CompanyRoleAssignResponse, CompanyRoleRemoveResponse
 )
-from app.services.company_role_service import CompanyRoleService
+from app.services.company_service import CompanyService
 from app.utils.activity_logger import ActivityActor
 
 router = APIRouter(prefix="/companies", tags=["Company Roles"])
-company_role_service = CompanyRoleService()
+company_service = CompanyService()
 
 @router.post("/{company_id}/roles/", response_model=UserCompanyRole, status_code=status.HTTP_201_CREATED)
 async def create_company_role(
@@ -24,7 +24,7 @@ async def create_company_role(
 ):
     """Create a new company role"""
     # TODO: Add company permission check
-    return await company_role_service.create_role(company_id=company_id, role_data=role_data, actor=ActivityActor(current_user.id, None))
+    return await company_service.create_company_role(company_id=company_id, role_data=role_data, actor=ActivityActor(current_user.id, None))
 
 @router.get("/{company_id}/roles/", response_model=List[UserCompanyRole])
 async def get_company_roles(
@@ -33,7 +33,7 @@ async def get_company_roles(
     current_user: User = Depends(get_current_user)
 ):
     """Get all roles for a company"""
-    return await company_role_service.get_company_roles(company_id)
+    return await company_service.get_company_roles(company_id)
 
 @router.get("/{company_id}/roles/presets", response_model=List[UserCompanyRole])
 async def get_company_preset_roles(
@@ -42,7 +42,7 @@ async def get_company_preset_roles(
     current_user: User = Depends(get_current_user)
 ):
     """Get preset roles for a company"""
-    return await company_role_service.get_company_preset_roles(company_id)
+    return await company_service.get_company_preset_roles(company_id)
 
 @router.get("/{company_id}/roles/{role_id}", response_model=UserCompanyRole)
 async def get_company_role(
@@ -52,7 +52,7 @@ async def get_company_role(
     current_user: User = Depends(get_current_user)
 ):
     """Get a company role by ID"""
-    role = await company_role_service.get_role_by_id(company_id, role_id)
+    role = await company_service.get_company_role_by_id(company_id, role_id)
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
     return role
@@ -67,7 +67,7 @@ async def update_company_role(
 ):
     """Update a company role"""
     # TODO: Add company permission check
-    return await company_role_service.update_role(company_id=company_id, role_id=role_id, role_data=role_data, actor=ActivityActor(current_user.id, None))
+    return await company_service.update_company_role(company_id=company_id, role_id=role_id, role_data=role_data, actor=ActivityActor(current_user.id, None))
 
 @router.delete("/{company_id}/roles/{role_id}", response_model=CompanyRoleDeleteResponse)
 async def delete_company_role(
@@ -78,7 +78,7 @@ async def delete_company_role(
 ):
     """Delete a company role"""
     # TODO: Add company permission check
-    return await company_role_service.delete_role(company_id=company_id, role_id=role_id, actor=ActivityActor(current_user.id, None))
+    return await company_service.delete_company_role(company_id=company_id, role_id=role_id, actor=ActivityActor(current_user.id, None))
 
 @router.post("/{company_id}/roles/{role_id}/assign", response_model=CompanyRoleAssignResponse)
 async def assign_company_role_to_user(
@@ -90,7 +90,7 @@ async def assign_company_role_to_user(
 ):
     """Assign a company role to a user"""
     # TODO: Add company permission check
-    return await company_role_service.assign_role_to_user(user_id=assignment_data.user_id, company_id=company_id, role_id=role_id, assigned_by=current_user.id, actor=ActivityActor(current_user.id, None))
+    return await company_service.assign_company_role_to_user(user_id=assignment_data.user_id, company_id=company_id, role_id=role_id, assigned_by=current_user.id, actor=ActivityActor(current_user.id, None))
 
 @router.delete("/{company_id}/roles/{role_id}/assign/{user_id}", response_model=CompanyRoleRemoveResponse)
 async def remove_company_role_from_user(
@@ -102,7 +102,7 @@ async def remove_company_role_from_user(
 ):
     """Remove a company role from a user"""
     # TODO: Add company permission check
-    return await company_role_service.remove_role_from_user(user_id=user_id, company_id=company_id, role_id=role_id, actor=ActivityActor(current_user.id, None))
+    return await company_service.remove_company_role_from_user(user_id=user_id, company_id=company_id, role_id=role_id, actor=ActivityActor(current_user.id, None))
 
 @router.get("/{company_id}/users/{user_id}/roles", response_model=List[UserCompanyRole])
 async def get_user_company_roles(
@@ -112,7 +112,7 @@ async def get_user_company_roles(
     current_user: User = Depends(get_current_user)
 ):
     """Get all company roles assigned to a user"""
-    return await company_role_service.get_user_company_roles(user_id, company_id)
+    return await company_service.get_user_company_roles(user_id, company_id)
 
 @router.get("/{company_id}/users/{user_id}/permissions", response_model=List[str])
 async def get_user_company_permissions(
@@ -122,7 +122,7 @@ async def get_user_company_permissions(
     current_user: User = Depends(get_current_user)
 ):
     """Get all company permissions for a user"""
-    return await company_role_service.get_user_company_permissions(user_id, company_id)
+    return await company_service.get_user_company_permissions(user_id, company_id)
 
 @router.post("/{company_id}/check-permission", response_model=CompanyPermissionCheckResponse)
 async def check_company_permission(
@@ -133,7 +133,7 @@ async def check_company_permission(
 ):
     """Check if a user has a specific company permission"""
     user_id = permission_data.user_id or current_user.id
-    return await company_role_service.check_permission_with_response(
+    return await company_service.check_company_permission_with_response(
         user_id, company_id, permission_data.permission
     )
 
@@ -145,5 +145,5 @@ async def create_company_default_presets(
 ):
     """Create default company role presets"""
     # TODO: Add company permission check
-    return await company_role_service.create_default_presets(company_id)
+    return await company_service.create_company_default_presets(company_id)
 

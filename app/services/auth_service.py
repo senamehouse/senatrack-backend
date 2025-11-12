@@ -448,10 +448,10 @@ class AuthService:
         companies = await company_service.get_user_companies(user.id)
         
         # Get user platform roles and permissions
-        from app.services.user_role_service import UserRoleService
-        user_role_service = UserRoleService()
-        platform_roles = await user_role_service.get_user_roles(user.id)
-        platform_permissions = await user_role_service.get_user_permissions(user.id)
+        from app.services.user_service import UserService
+        user_service = UserService()
+        platform_roles = await user_service.get_user_roles(user.id)
+        platform_permissions = await user_service.get_user_permissions(user.id)
         
         # Convert user to dict and add companies, roles, and permissions
         user_dict = user.model_dump()
