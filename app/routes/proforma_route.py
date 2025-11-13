@@ -110,14 +110,3 @@ async def get_recent_proformas(
 ):
     """Get recent proformas for a company"""
     return await proforma_service.get_recent_proformas(company_id, limit)
-
-@router.post("/generate-number/{company_id}")
-async def generate_proforma_number(
-    company_id: str,
-    session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user),
-    header_company_id: str = Depends(get_company_id)
-):
-    """Generate a unique proforma number for a company"""
-    number = await proforma_service.generate_proforma_number(company_id)
-    return {"number": number}

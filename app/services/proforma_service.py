@@ -17,8 +17,8 @@ class ProformaService:
         """Create a new proforma"""
         try:
             session = get_db_session()
-            # Generate proforma number if not provided
-            if not proforma_data.number:
+            # Always generate proforma number if not provided or empty
+            if not proforma_data.number or not proforma_data.number.strip():
                 proforma_data.number = await self.generate_proforma_number(proforma_data.company_id)
 
             proforma_dict = proforma_data.model_dump()

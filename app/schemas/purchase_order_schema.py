@@ -12,8 +12,12 @@ class PurchaseOrderBase(BaseCamelModel):
     total_amount: float = Field(0.0, ge=0, alias="totalAmount")
 
 
-class PurchaseOrderCreate(PurchaseOrderBase):
-    pass
+class PurchaseOrderCreate(BaseCamelModel):
+
+    order_number: Optional[str] = Field(None, alias="orderNumber")
+    supplier_id: Optional[str] = Field(None, alias="supplierId")
+    status: str = Field("draft")
+    total_amount: float = Field(0.0, ge=0, alias="totalAmount")
 
 
 class PurchaseOrderUpdate(BaseCamelModel):

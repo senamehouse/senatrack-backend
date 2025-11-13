@@ -76,6 +76,7 @@ class SaleBase(BaseCamelModel):
 
 
 class SaleCreate(SaleBase):
+    reference: Optional[str] = None
     items: List[SaleItemCreate] = []
 
 

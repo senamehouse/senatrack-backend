@@ -38,7 +38,7 @@ class StockMovementService:
         entity_type="stock_movement",
         details=lambda result, _a, kw: f"Mouvement de stock {result} enregistré ({kw['payload'].movement_type.value})",
         entity_id=lambda result, _a, _kw: result,
-        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(exclude_none=True)},
+        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(mode='json', exclude_none=True)},
     )
     async def create(self, company_id: str, payload: StockMovementCreate, actor: ActivityActor | None = None) -> str:
         try:

@@ -37,16 +37,21 @@ class PurchaseOrderService:
     @audit(
         action="CREATE",
         entity_type="purchase_order",
-        details=lambda result, _a, kw: f"Bon de commande {kw['payload'].order_number} créé",
+        details=lambda result, _a, kw: f"Bon de commande créé",
         entity_id=lambda result, _a, _kw: result,
-        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(exclude_none=True)},
+        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(mode='json', exclude_none=True)},
     )
     async def create(self, company_id: str, payload: PurchaseOrderCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
+            # Always generate order_number if not provided or empty
+            order_number = payload.order_number
+            if not order_number or not order_number.strip():
+                order_number = await self.generate_order_number(company_id)
+            
             po = PurchaseOrderModel(
                 company_id=company_id,
-                order_number=payload.order_number,
+                order_number=order_number,
                 supplier_id=payload.supplier_id,
                 status=payload.status,
                 total_amount=payload.total_amount,

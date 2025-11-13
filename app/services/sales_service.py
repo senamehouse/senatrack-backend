@@ -175,11 +175,15 @@ class SalesService:
         entity_type="sale",
         details=lambda result, _a, kw: f"Vente {kw['payload'].reference} créée",
         entity_id=lambda result, _a, _kw: result,
-        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(exclude_none=True)},
+        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(mode='json', exclude_none=True)},
     )
     async def create(self, company_id: str, payload: SaleCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
+
+            # Always assign a fresh unique reference on the backend
+            payload.reference = await self.generate_sale_reference(company_id)
+
             # Validate sufficient stock for product items before creating the sale
             from app.models.product_model import Product as ProductModel
             for item in payload.items:

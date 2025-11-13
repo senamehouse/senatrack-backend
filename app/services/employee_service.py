@@ -64,15 +64,20 @@ class EmployeeService:
         entity_type="employee",
         details=lambda result, _a, kw: f"Employé {kw['payload'].first_name} {kw['payload'].last_name} créé",
         entity_id=lambda result, _a, _kw: result,
-        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(exclude_none=True)},
+        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(mode='json', exclude_none=True)},
     )
     async def create(self, company_id: str, payload: EmployeeCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
+            # Always generate employee_number if not provided or empty
+            employee_number = payload.employee_number
+            if not employee_number or not employee_number.strip():
+                employee_number = await self.generate_employee_number(company_id)
+            
             salary_data = payload.salary if hasattr(payload, 'salary') else {}
             emp = EmployeeModel(
                 company_id=company_id,
-                employee_number=payload.employee_number,
+                employee_number=employee_number,
                 first_name=payload.first_name,
                 last_name=payload.last_name,
                 email=payload.email,

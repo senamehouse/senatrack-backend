@@ -72,16 +72,6 @@ async def delete_purchase_order(
     return {"message": "Purchase order deleted"}
 
 
-@router.post("/generate-number")
-async def generate_purchase_order_number(
-    session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user), 
-    company_id: str = Depends(get_company_id)
-):
-    number = await svc.generate_order_number(company_id)
-    return {"number": number}
-
-
 @router.get("/stats")
 async def get_purchase_order_stats(
     session: AsyncSession = Depends(get_async_db),

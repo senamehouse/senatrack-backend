@@ -83,16 +83,6 @@ async def delete_sale(
     return {"message": "Sale deleted"}
 
 
-@router.post("/generate-number")
-async def generate_sale_number(
-    session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user), 
-    company_id: str = Depends(get_company_id)
-):
-    number = await svc.generate_sale_reference(company_id)
-    return {"number": number}
-
-
 @router.get("/{sale_id}/profit", response_model=SaleProfit)
 async def get_sale_profit(
     sale_id: str,

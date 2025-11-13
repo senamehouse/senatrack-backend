@@ -40,9 +40,18 @@ class ProformaBase(BaseCamelModel):
     notes: Optional[str] = None
     status: str = Field(default="draft", pattern="^(draft|sent|accepted|rejected)$")
 
-class ProformaCreate(ProformaBase):
+class ProformaCreate(BaseCamelModel):
     """Schema for creating a proforma"""
     
+    number: Optional[str] = Field(None, min_length=1, max_length=100)
+    date: datetime
+    client: ProformaClient
+    items: List[ProformaItem]
+    subtotal: float = Field(..., ge=0)
+    tax_amount: float = Field(..., ge=0, alias="taxAmount")
+    total: float = Field(..., ge=0)
+    notes: Optional[str] = None
+    status: str = Field(default="draft", pattern="^(draft|sent|accepted|rejected)$")
     company_id: str = Field(..., alias="companyId")
     created_by: int = Field(..., alias="createdBy")
 

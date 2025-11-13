@@ -71,12 +71,3 @@ async def delete_supplier(
     if not ok:
         raise HTTPException(status_code=404, detail="Supplier not found")
     return {"message": "Supplier deleted"}
-
-@router.get("/next-code", response_model=dict)
-async def next_supplier_code(
-    session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user), 
-    company_id: str = Depends(get_company_id)
-):
-    code = await service.generate_supplier_code(company_id)
-    return {"supplierCode": code}

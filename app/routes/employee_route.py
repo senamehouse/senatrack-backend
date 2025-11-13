@@ -48,16 +48,6 @@ async def get_employee_stats(
     return await svc.get_stats(company_id)
 
 
-@router.get("/next-number", response_model=dict)
-async def get_next_employee_number(
-    session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user), 
-    company_id: str = Depends(get_company_id)
-):
-    number = await svc.generate_employee_number(company_id)
-    return {"employeeNumber": number}
-
-
 # Department routes (must come before /{employee_id} to avoid conflicts)
 @router.get("/departments", response_model=List[EmployeeDepartment])
 async def get_departments(
