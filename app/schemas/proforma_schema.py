@@ -12,7 +12,7 @@ class ProformaItem(BaseCamelModel):
     item_reference: Optional[str] = Field(None, max_length=100, alias="itemReference")
     item_type: str = Field(..., pattern="^(product|service)$", alias="itemType")
     quantity: int = Field(..., gt=0)
-    unit_price: float = Field(..., ge=0, alias="unitPrice")
+    sell_price: float = Field(..., ge=0, alias="sellPrice")
     total: float = Field(..., ge=0)
     unit: Optional[str] = Field(None, max_length=50)
 

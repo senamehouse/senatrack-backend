@@ -73,7 +73,7 @@ class Product(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     sku: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, unique=True, index=True)
     buy_price: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    unit_price: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    sell_price: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     stock: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -97,7 +97,7 @@ class Product(Base):
             "description": self.description,
             "sku": self.sku,
             "buy_price": self.buy_price,
-            "unit_price": self.unit_price,
+            "sell_price": self.sell_price,
             "stock": self.stock,
             "image_url": self.image_url,
             "is_active": self.is_active,

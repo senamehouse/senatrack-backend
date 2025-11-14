@@ -52,7 +52,7 @@ class StockMovementItem(Base):
     product_id: Mapped[str] = mapped_column(String(20), nullable=False)
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    unit_price: Mapped[float] = mapped_column(Float, nullable=False)
+    price: Mapped[float] = mapped_column(Float, nullable=False)
     total: Mapped[float] = mapped_column(Float, nullable=False)
     unit: Mapped[str] = mapped_column(String(50), nullable=False)
 
@@ -63,7 +63,7 @@ class StockMovementItem(Base):
             "product_id": self.product_id,
             "product_name": self.product_name,
             "quantity": self.quantity,
-            "unit_price": self.unit_price,
+            "price": self.price,
             "total": self.total,
             "unit": self.unit,
         }

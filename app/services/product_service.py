@@ -373,7 +373,7 @@ class ProductService:
                 description=product_data.description,
                 sku=product_data.sku,
                 buy_price=product_data.buy_price,
-                unit_price=product_data.unit_price,
+                sell_price=product_data.sell_price,
                 stock=product_data.stock,
                 image_url=product_data.image_url,
                 category_id=product_data.category_id,
@@ -427,8 +427,8 @@ class ProductService:
                 product.sku = product_data.sku
             if product_data.buy_price is not None:
                 product.buy_price = product_data.buy_price
-            if product_data.unit_price is not None:
-                product.unit_price = product_data.unit_price
+            if product_data.sell_price is not None:
+                product.sell_price = product_data.sell_price
             if product_data.stock is not None:
                 product.stock = product_data.stock
             if product_data.image_url is not None:
@@ -544,7 +544,7 @@ class ProductService:
             categories = categories_result.scalar()
             
             # Average price
-            q_avg = select(func.avg(ProductModel.unit_price)).where(ProductModel.is_active == True)
+            q_avg = select(func.avg(ProductModel.sell_price)).where(ProductModel.is_active == True)
             if company_id:
                 q_avg = q_avg.where(ProductModel.company_id == company_id)
             avg_price_result = await session.execute(q_avg)

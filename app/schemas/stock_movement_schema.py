@@ -14,7 +14,7 @@ class StockMovementItemBase(BaseCamelModel):
     product_id: str
     product_name: str
     quantity: int
-    unit_price: float
+    price: float
     total: float
     unit: str
 

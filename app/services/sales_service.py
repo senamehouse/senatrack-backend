@@ -102,8 +102,8 @@ class SalesService:
                     item_reference=item_dict.get("product_reference", ""),
                     item_type=item_dict.get("item_type", "product"),
                     quantity=item_dict["quantity"],
-                    unit_price=item_dict["unit_price"],
-                    original_unit_price=item_dict.get("original_unit_price"),
+                    sell_price=item_dict["sell_price"],
+                    original_sell_price=item_dict.get("original_sell_price"),
                     total=item_dict["total"],
                     unit=item_dict.get("unit", ""),
                     price_modified=item_dict.get("price_modified", False),
@@ -237,8 +237,8 @@ class SalesService:
                     product_reference=getattr(item, 'product_reference', None),
                     item_type=getattr(item, 'item_type', 'product') or 'product',
                     quantity=item.quantity,
-                    unit_price=item.unit_price,
-                    original_unit_price=getattr(item, 'original_unit_price', None),
+                    sell_price=item.sell_price,
+                    original_sell_price=getattr(item, 'original_sell_price', None),
                     total=item.total_price,
                     unit=getattr(item, 'unit', None),
                     price_modified=getattr(item, 'price_modified', False),
@@ -261,7 +261,7 @@ class SalesService:
                             product_id=item.product_id,
                             product_name=item.product_name,
                             quantity=item.quantity,
-                            unit_price=item.unit_price,
+                            price=item.sell_price,
                             total=item.total_price,
                             unit=getattr(item, "unit", "") or ""
                         ))
@@ -491,7 +491,7 @@ class SalesService:
                     
                     if item.price_modified:
                         modified_items_count += 1
-                        original_total = (item.original_unit_price or item.unit_price) * item.quantity
+                        original_total = (item.original_sell_price or item.sell_price) * item.quantity
                         total_price_difference += (item.total - original_total)
                     
                     # Aggregate product stats

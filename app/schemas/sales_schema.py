@@ -23,12 +23,12 @@ class SaleItemBase(BaseCamelModel):
     product_id: str
     product_name: str
     quantity: int
-    unit_price: float
+    sell_price: float
     total_price: float
     item_type: Optional[str] = "product"  # product|service
     product_reference: Optional[str] = None
     unit: Optional[str] = None
-    original_unit_price: Optional[float] = None
+    original_sell_price: Optional[float] = None
     price_modified: Optional[bool] = False
 
 
@@ -48,8 +48,8 @@ class SaleItemResponse(BaseCamelModel):
     item_reference: Optional[str] = None
     item_type: str
     quantity: int
-    unit_price: float
-    original_unit_price: Optional[float] = None
+    sell_price: float
+    original_sell_price: Optional[float] = None
     total: float
     unit: Optional[str] = None
     price_modified: bool = False

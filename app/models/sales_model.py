@@ -69,8 +69,8 @@ class SaleItem(Base):
     product_reference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     item_type: Mapped[str] = mapped_column(String(20), nullable=False)  # product|service
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    unit_price: Mapped[float] = mapped_column(Float, nullable=False)
-    original_unit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    sell_price: Mapped[float] = mapped_column(Float, nullable=False)
+    original_sell_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     total: Mapped[float] = mapped_column(Float, nullable=False)
     unit: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     price_modified: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -87,8 +87,8 @@ class SaleItem(Base):
             "product_reference": self.product_reference,
             "item_type": self.item_type,
             "quantity": self.quantity,
-            "unit_price": self.unit_price,
-            "original_unit_price": self.original_unit_price,
+            "sell_price": self.sell_price,
+            "original_sell_price": self.original_sell_price,
             "total": self.total,
             "unit": self.unit,
             "price_modified": self.price_modified,

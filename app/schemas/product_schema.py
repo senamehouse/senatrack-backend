@@ -67,7 +67,7 @@ class ProductBase(BaseCamelModel):
     description: Optional[str] = None
     sku: Optional[str] = Field(None, max_length=100)
     buy_price: float = Field(..., ge=0, alias="buyPrice")
-    unit_price: float = Field(..., ge=0, alias="unitPrice")
+    sell_price: float = Field(..., ge=0, alias="sellPrice")
     stock: int = Field(..., ge=0)
     image_url: Optional[str] = Field(None, max_length=500, alias="imageUrl")
     
@@ -84,7 +84,7 @@ class ProductUpdate(BaseCamelModel):
     description: Optional[str] = None
     sku: Optional[str] = Field(None, max_length=100)
     buy_price: Optional[float] = Field(None, ge=0, alias="buyPrice")
-    unit_price: Optional[float] = Field(None, ge=0, alias="unitPrice")
+    sell_price: Optional[float] = Field(None, ge=0, alias="sellPrice")
     stock: Optional[int] = Field(None, ge=0)
     image_url: Optional[str] = Field(None, max_length=500, alias="imageUrl")
     category_id: Optional[str] = Field(None, alias="categoryId")
