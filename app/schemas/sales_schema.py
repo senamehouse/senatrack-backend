@@ -11,14 +11,6 @@ class PaymentStatus(str, Enum):
     OVERDUE = "overdue"
 
 
-class PaymentMethod(str, Enum):
-    CASH = "cash"
-    BANK_TRANSFER = "bank_transfer"
-    CHECK = "check"
-    CREDIT_CARD = "credit_card"
-    MOBILE_MONEY = "mobile_money"
-
-
 class SaleItemBase(BaseCamelModel):
     product_id: str
     product_name: str
@@ -68,11 +60,8 @@ class SaleBase(BaseCamelModel):
     tva_amount: float = 0.0
     total: float
     payment_status: PaymentStatus
-    payment_method: Optional[PaymentMethod] = None
     amount_paid: float = 0.0
     payment_reference: Optional[str] = None
-    notes: Optional[str] = None
-    print_after_creation: bool = False
 
 
 class SaleCreate(SaleBase):
@@ -92,11 +81,8 @@ class SaleUpdate(BaseCamelModel):
     tva_amount: Optional[float] = None
     total: Optional[float] = None
     payment_status: Optional[PaymentStatus] = None
-    payment_method: Optional[PaymentMethod] = None
     amount_paid: Optional[float] = None
     payment_reference: Optional[str] = None
-    notes: Optional[str] = None
-    print_after_creation: Optional[bool] = None
 
 
 class SaleProfitItemInfo(BaseCamelModel):

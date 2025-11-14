@@ -17,6 +17,7 @@ from app.models.sales_model import Sale, SaleItem
 from app.models.purchase_order_model import PurchaseOrder
 from app.models.employee_model import EmployeeModel, EmployeeDepartmentModel, EmployeeLeaveModel, EmployeePayrollModel
 from app.models.file_model import FileRecord
+from app.models.tva_rate_model import TvaRateModel
 
 __all__ = [
     "User", "RefreshToken", "PasswordResetToken", "SyncLog",
@@ -26,5 +27,6 @@ __all__ = [
     "Proforma", "CompanyInvitation", "ActivationKey",
     "Service", "StockMovement", "StockMovementItem", "Sale", "SaleItem",
     "PurchaseOrder", "EmployeeModel", "EmployeeDepartmentModel", "EmployeeLeaveModel", "EmployeePayrollModel",
-    "FileRecord", "UserRoleModel", "UserRoleAssignmentModel", "UserCompanyRoleModel", "UserCompanyRoleAssignmentModel"
+    "FileRecord", "UserRoleModel", "UserRoleAssignmentModel", "UserCompanyRoleModel", "UserCompanyRoleAssignmentModel",
+    "TvaRateModel"
 ]

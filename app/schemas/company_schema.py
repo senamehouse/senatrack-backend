@@ -97,6 +97,10 @@ class CompanySettings(BaseCamelModel):
         "accounting": False,
         "hr": False,
     }
+    tva: Dict[str, Any] = {
+        "enabled": False,
+        "defaultRateId": None,
+    }
 
 # Company Subscription Schema
 class CompanySubscription(BaseCamelModel):

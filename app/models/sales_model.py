@@ -23,11 +23,8 @@ class Sale(Base):
     tva_amount: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     total: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     payment_status: Mapped[str] = mapped_column(String(20), nullable=False)
-    payment_method: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     amount_paid: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     payment_reference: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    print_after_creation: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now())
 
@@ -49,11 +46,8 @@ class Sale(Base):
             "tva_amount": self.tva_amount,
             "total": self.total,
             "payment_status": self.payment_status,
-            "payment_method": self.payment_method,
             "amount_paid": self.amount_paid,
             "payment_reference": self.payment_reference,
-            "notes": self.notes,
-            "print_after_creation": self.print_after_creation,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

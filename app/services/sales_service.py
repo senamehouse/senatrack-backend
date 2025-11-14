@@ -218,11 +218,8 @@ class SalesService:
                 tva_amount=payload.tva_amount,
                 total=payload.total,
                 payment_status=payload.payment_status.value,
-                payment_method=payload.payment_method.value if payload.payment_method else None,
                 amount_paid=payload.amount_paid,
                 payment_reference=payload.payment_reference,
-                notes=payload.notes,
-                print_after_creation=payload.print_after_creation,
             )
             session.add(sale)
             await session.commit()
@@ -312,8 +309,6 @@ class SalesService:
             for field, value in payload.model_dump(exclude_unset=True).items():
                 if field == 'payment_status' and value is not None:
                     setattr(sale, 'payment_status', value.value)
-                elif field == 'payment_method' and value is not None:
-                    setattr(sale, 'payment_method', value.value)
                 else:
                     setattr(sale, field, value)
             sale.updated_at = datetime.now()
