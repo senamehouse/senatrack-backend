@@ -7,8 +7,7 @@ from app.models.employee_model import (
     EmployeeModel,
     EmployeeDepartmentModel,
     EmployeeLeaveModel,
-    EmployeePayrollModel,
-    EmployeePerformanceReviewModel
+    EmployeePayrollModel
 )
 from app.schemas.employee_schema import (
     Employee as EmployeeSchema, 
@@ -22,10 +21,7 @@ from app.schemas.employee_schema import (
     EmployeeLeaveRequestUpdate,
     EmployeePayroll as EmployeePayrollSchema,
     EmployeePayrollCreate,
-    EmployeePayrollUpdate,
-    EmployeePerformanceReview as EmployeePerformanceReviewSchema,
-    EmployeePerformanceReviewCreate,
-    EmployeePerformanceReviewUpdate
+    EmployeePayrollUpdate
 )
 from app.utils.activity_logger import audit, ActivityActor
 
@@ -74,7 +70,13 @@ class EmployeeService:
             if not employee_number or not employee_number.strip():
                 employee_number = await self.generate_employee_number(company_id)
             
-            salary_data = payload.salary if hasattr(payload, 'salary') else {}
+            # Handle salary - prefer nested salary object, fallback to flat fields
+            salary_data = payload.salary if payload.salary else {}
+            salary_type = salary_data.get('type') if salary_data else None
+            salary_amount = salary_data.get('amount') if salary_data else (payload.salary_amount or 0.0)
+            salary_currency = salary_data.get('currency') if salary_data else (payload.salary_currency or "XOF")
+            salary_payment_frequency = salary_data.get('payment_frequency') if salary_data else None
+            
             emp = EmployeeModel(
                 company_id=company_id,
                 employee_number=employee_number,
@@ -82,16 +84,16 @@ class EmployeeService:
                 last_name=payload.last_name,
                 email=payload.email,
                 phone=payload.phone,
-                address=getattr(payload, 'address', None),
-                department_id=getattr(payload, 'department_id', None),
+                address=payload.address,
+                department_id=payload.department_id,
                 position=payload.position,
-                employment_type=getattr(payload, 'employment_type', 'full_time'),
-                is_active=getattr(payload, 'is_active', True),
-                hire_date=getattr(payload, 'hire_date', None),
-                salary_type=salary_data.get('type') if salary_data else None,
-                salary_amount=salary_data.get('amount') if salary_data else payload.salary_amount,
-                salary_currency=salary_data.get('currency') if salary_data else payload.salary_currency,
-                salary_payment_frequency=salary_data.get('payment_frequency') if salary_data else None,
+                employment_type=payload.employment_type,
+                is_active=payload.is_active,
+                hire_date=payload.hire_date,
+                salary_type=salary_type,
+                salary_amount=salary_amount,
+                salary_currency=salary_currency,
+                salary_payment_frequency=salary_payment_frequency,
             )
             session.add(emp)
             await session.commit()
@@ -119,8 +121,20 @@ class EmployeeService:
             emp = result.scalar_one_or_none()
             if not emp:
                 return False
-            for field, value in payload.model_dump(exclude_unset=True).items():
-                setattr(emp, field, value)
+            
+            # Handle regular fields
+            update_data = payload.model_dump(exclude_unset=True, exclude={'salary'})
+            for field, value in update_data.items():
+                if hasattr(emp, field):
+                    setattr(emp, field, value)
+            
+            # Handle salary object separately
+            if payload.salary is not None:
+                emp.salary_type = payload.salary.type
+                emp.salary_amount = payload.salary.amount
+                emp.salary_currency = payload.salary.currency
+                emp.salary_payment_frequency = payload.salary.payment_frequency
+            
             emp.updated_at = datetime.now()
             await session.commit()
             return True
@@ -559,12 +573,11 @@ class EmployeeService:
                 employee_id=employee_id,
                 period_year=payload.period_year,
                 period_month=payload.period_month,
-                period_start_date=f"{payload.period_year}-{payload.period_month:02d}-01",
-                period_end_date=f"{payload.period_year}-{payload.period_month:02d}-28",
                 net_salary=payload.net_salary,
                 status=payload.status,
                 payment_method=payload.payment_method,
                 paid_date=payload.paid_date,
+                notes=payload.notes,
             )
             session.add(pr)
             await session.commit()
@@ -625,126 +638,3 @@ class EmployeeService:
             return True
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error deleting payroll: {str(e)}")
-
-    # Performance Review methods
-    async def get_all_performance_reviews(self, company_id: str) -> List[EmployeePerformanceReviewSchema]:
-        """Get all performance reviews for a company (across all employees)"""
-        try:
-            session = get_db_session()
-            result = await session.execute(
-                select(EmployeePerformanceReviewModel).where(
-                    EmployeePerformanceReviewModel.company_id == company_id,
-                )
-            )
-            rows = result.scalars().all()
-            return [EmployeePerformanceReviewSchema.model_validate(r.to_dict()) for r in rows]
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error retrieving performance reviews: {str(e)}")
-
-    async def get_performance_reviews(self, employee_id: str, company_id: str) -> List[EmployeePerformanceReviewSchema]:
-        try:
-            session = get_db_session()
-            result = await session.execute(
-                select(EmployeePerformanceReviewModel).where(
-                    EmployeePerformanceReviewModel.employee_id == employee_id,
-                    EmployeePerformanceReviewModel.company_id == company_id,
-                )
-            )
-            rows = result.scalars().all()
-            return [EmployeePerformanceReviewSchema.model_validate(r.to_dict()) for r in rows]
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error retrieving performance reviews: {str(e)}")
-
-    async def get_performance_review_by_id(self, review_id: str, employee_id: str, company_id: str) -> Optional[EmployeePerformanceReviewSchema]:
-        try:
-            session = get_db_session()
-            result = await session.execute(
-                select(EmployeePerformanceReviewModel).where(
-                    EmployeePerformanceReviewModel.id == review_id,
-                    EmployeePerformanceReviewModel.employee_id == employee_id,
-                    EmployeePerformanceReviewModel.company_id == company_id,
-                )
-            )
-            row = result.scalar_one_or_none()
-            return EmployeePerformanceReviewSchema.model_validate(row.to_dict()) if row else None
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error retrieving performance review: {str(e)}")
-
-    @audit(
-        action="CREATE",
-        entity_type="employee_performance_review",
-        details=lambda result, _a, kw: f"Évaluation créée pour employé {kw['employee_id']}",
-        entity_id=lambda result, _a, _kw: result,
-        extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(exclude_none=True)},
-    )
-    async def create_performance_review(self, employee_id: str, company_id: str, payload: EmployeePerformanceReviewCreate, actor: ActivityActor | None = None) -> str:
-        try:
-            session = get_db_session()
-            pr = EmployeePerformanceReviewModel(
-                company_id=company_id,
-                employee_id=employee_id,
-                reviewer_id=payload.reviewer_id,
-                status=payload.status,
-                overall_rating=payload.overall_rating,
-                review_period_start_date="",
-                review_period_end_date="",
-            )
-            session.add(pr)
-            await session.commit()
-            await session.refresh(pr)
-            return pr.id
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error creating performance review: {str(e)}")
-
-    @audit(
-        action="UPDATE",
-        entity_type="employee_performance_review",
-        details=lambda _r, _a, kw: f"Évaluation {kw['review_id']} mise à jour",
-        entity_id=lambda _r, _a, kw: kw["review_id"],
-        extra=lambda _r, _a, kw: kw["payload"].model_dump(exclude_unset=True),
-    )
-    async def update_performance_review(self, review_id: str, employee_id: str, company_id: str, payload: EmployeePerformanceReviewUpdate, actor: ActivityActor | None = None) -> bool:
-        try:
-            session = get_db_session()
-            result = await session.execute(
-                select(EmployeePerformanceReviewModel).where(
-                    EmployeePerformanceReviewModel.id == review_id,
-                    EmployeePerformanceReviewModel.employee_id == employee_id,
-                    EmployeePerformanceReviewModel.company_id == company_id,
-                )
-            )
-            pr = result.scalar_one_or_none()
-            if not pr:
-                return False
-            for field, value in payload.model_dump(exclude_unset=True).items():
-                setattr(pr, field, value)
-            pr.updated_at = datetime.now()
-            await session.commit()
-            return True
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error updating performance review: {str(e)}")
-
-    @audit(
-        action="DELETE",
-        entity_type="employee_performance_review",
-        details=lambda _r, _a, kw: f"Évaluation {kw['review_id']} supprimée",
-        entity_id=lambda _r, _a, kw: kw["review_id"],
-    )
-    async def delete_performance_review(self, review_id: str, employee_id: str, company_id: str, actor: ActivityActor | None = None) -> bool:
-        try:
-            session = get_db_session()
-            result = await session.execute(
-                select(EmployeePerformanceReviewModel).where(
-                    EmployeePerformanceReviewModel.id == review_id,
-                    EmployeePerformanceReviewModel.employee_id == employee_id,
-                    EmployeePerformanceReviewModel.company_id == company_id,
-                )
-            )
-            pr = result.scalar_one_or_none()
-            if not pr:
-                return False
-            await session.delete(pr)
-            await session.commit()
-            return True
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error deleting performance review: {str(e)}")

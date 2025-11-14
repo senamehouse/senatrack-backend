@@ -70,7 +70,6 @@ class EmployeeModel(Base):
     department_relation: Mapped[Optional["EmployeeDepartmentModel"]] = relationship("EmployeeDepartmentModel", back_populates="employees")
     leave_requests: Mapped[list["EmployeeLeaveModel"]] = relationship("EmployeeLeaveModel", back_populates="employee", cascade="all, delete-orphan")
     payrolls: Mapped[list["EmployeePayrollModel"]] = relationship("EmployeePayrollModel", back_populates="employee", cascade="all, delete-orphan")
-    performance_reviews: Mapped[list["EmployeePerformanceReviewModel"]] = relationship("EmployeePerformanceReviewModel", back_populates="employee", cascade="all, delete-orphan")
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert model to dictionary"""
@@ -147,33 +146,14 @@ class EmployeeLeaveModel(Base):
 
 
 class EmployeePayrollModel(Base):
-    """SQLAlchemy model for Employee Payroll table"""
+    """SQLAlchemy model for Employee Payroll table - simplified"""
     __tablename__ = "employee_payrolls"
 
     id: Mapped[str] = mapped_column(String(20), primary_key=True, index=True, default=generate_id)
     company_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
     employee_id: Mapped[str] = mapped_column(String(20), ForeignKey("employees.id"), nullable=False, index=True)
-    period_start_date: Mapped[str] = mapped_column(String(20), nullable=False)
-    period_end_date: Mapped[str] = mapped_column(String(20), nullable=False)
     period_month: Mapped[int] = mapped_column(Integer, nullable=False)
     period_year: Mapped[int] = mapped_column(Integer, nullable=False)
-    basic_salary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    transport_allowance: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    meal_allowance: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    housing_allowance: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    other_allowance: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    tax_deduction: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    social_security_deduction: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    health_insurance_deduction: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    other_deduction: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    overtime_hours: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    overtime_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    overtime_amount: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    performance_bonus: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    attendance_bonus: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    other_bonus: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    gross_salary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    total_deductions: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     net_salary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     paid_date: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
@@ -193,108 +173,14 @@ class EmployeePayrollModel(Base):
             "employeeId": self.employee_id,
             "employeeName": f"{self.employee.first_name} {self.employee.last_name}" if self.employee else "",
             "period": {
-                "startDate": self.period_start_date,
-                "endDate": self.period_end_date,
                 "month": self.period_month,
                 "year": self.period_year,
             },
-            "basicSalary": self.basic_salary,
-            "allowances": {
-                "transport": self.transport_allowance,
-                "meal": self.meal_allowance,
-                "housing": self.housing_allowance,
-                "other": self.other_allowance,
-            },
-            "deductions": {
-                "tax": self.tax_deduction,
-                "socialSecurity": self.social_security_deduction,
-                "healthInsurance": self.health_insurance_deduction,
-                "other": self.other_deduction,
-            },
-            "overtime": {
-                "hours": self.overtime_hours,
-                "rate": self.overtime_rate,
-                "amount": self.overtime_amount,
-            },
-            "bonuses": {
-                "performance": self.performance_bonus,
-                "attendance": self.attendance_bonus,
-                "other": self.other_bonus,
-            },
-            "grossSalary": self.gross_salary,
-            "totalDeductions": self.total_deductions,
             "netSalary": self.net_salary,
             "status": self.status,
             "paidDate": self.paid_date,
             "paymentMethod": self.payment_method,
             "notes": self.notes,
-            "createdAt": self.created_at.isoformat() if self.created_at else None,
-            "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
-
-class EmployeePerformanceReviewModel(Base):
-    """SQLAlchemy model for Employee Performance Review table"""
-    __tablename__ = "employee_performance_reviews"
-
-    id: Mapped[str] = mapped_column(String(20), primary_key=True, index=True, default=generate_id)
-    company_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
-    employee_id: Mapped[str] = mapped_column(String(20), ForeignKey("employees.id"), nullable=False, index=True)
-    reviewer_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    review_period_start_date: Mapped[str] = mapped_column(String(20), nullable=False)
-    review_period_end_date: Mapped[str] = mapped_column(String(20), nullable=False)
-    overall_rating: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    strengths: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array as string
-    areas_for_improvement: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array as string
-    development_plan: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    next_review_date: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
-    goals: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array as string
-    competencies: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array as string
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now())
-
-    # Relationships
-    employee: Mapped["EmployeeModel"] = relationship("EmployeeModel", back_populates="performance_reviews")
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert model to dictionary"""
-        goals = []
-        competencies = []
-        strengths = []
-        areas_for_improvement = []
-        
-        try:
-            if self.goals:
-                goals = json.loads(self.goals)
-            if self.competencies:
-                competencies = json.loads(self.competencies)
-            if self.strengths:
-                strengths = json.loads(self.strengths)
-            if self.areas_for_improvement:
-                areas_for_improvement = json.loads(self.areas_for_improvement)
-        except (json.JSONDecodeError, TypeError):
-            pass
-        
-        return {
-            "id": self.id,
-            "companyId": self.company_id,
-            "employeeId": self.employee_id,
-            "employeeName": f"{self.employee.first_name} {self.employee.last_name}" if self.employee else "",
-            "reviewPeriod": {
-                "startDate": self.review_period_start_date,
-                "endDate": self.review_period_end_date,
-            },
-            "reviewerId": self.reviewer_id,
-            "reviewerName": "",  # Will be populated by service if needed
-            "goals": goals,
-            "competencies": competencies,
-            "overallRating": self.overall_rating,
-            "strengths": strengths,
-            "areasForImprovement": areas_for_improvement,
-            "developmentPlan": self.development_plan,
-            "nextReviewDate": self.next_review_date,
-            "status": self.status,
             "createdAt": self.created_at.isoformat() if self.created_at else None,
             "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
         }

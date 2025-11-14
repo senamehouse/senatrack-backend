@@ -4,6 +4,13 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 
 
+class EmployeeSalary(BaseCamelModel):
+    type: str = Field(..., alias="type")
+    amount: float = Field(..., ge=0, alias="amount")
+    currency: str = Field(..., alias="currency")
+    payment_frequency: str = Field(..., alias="paymentFrequency")
+
+
 class EmployeeBase(BaseCamelModel):
 
     employee_number: Optional[str] = Field(None, max_length=50, alias="employeeNumber")
@@ -11,9 +18,14 @@ class EmployeeBase(BaseCamelModel):
     last_name: str = Field(..., min_length=1, max_length=100, alias="lastName")
     email: Optional[str] = Field(None, max_length=255)
     phone: Optional[str] = Field(None, max_length=20)
+    address: Optional[str] = Field(None, alias="address")
     department_id: Optional[str] = Field(None, alias="departmentId")
     position: Optional[str] = Field(None, max_length=100)
-    employment_status: str = Field("active", alias="employmentStatus")
+    employment_type: str = Field("full_time", alias="employmentType")
+    is_active: bool = Field(True, alias="isActive")
+    hire_date: Optional[str] = Field(None, alias="hireDate")
+    salary: Optional[EmployeeSalary] = Field(None, alias="salary")
+    # Legacy fields for backward compatibility
     salary_amount: Optional[float] = Field(None, ge=0, alias="salaryAmount")
     salary_currency: Optional[str] = Field(None, max_length=10, alias="salaryCurrency")
 
@@ -29,12 +41,16 @@ class EmployeeUpdate(BaseCamelModel):
     last_name: Optional[str] = Field(None, min_length=1, max_length=100, alias="lastName")
     email: Optional[str] = Field(None, max_length=255)
     phone: Optional[str] = Field(None, max_length=20)
+    address: Optional[str] = Field(None, alias="address")
     department_id: Optional[str] = Field(None, alias="departmentId")
     position: Optional[str] = Field(None, max_length=100)
-    employment_status: Optional[str] = Field(None, alias="employmentStatus")
+    employment_type: Optional[str] = Field(None, alias="employmentType")
+    is_active: Optional[bool] = Field(None, alias="isActive")
+    hire_date: Optional[str] = Field(None, alias="hireDate")
+    salary: Optional[EmployeeSalary] = Field(None, alias="salary")
+    # Legacy fields for backward compatibility
     salary_amount: Optional[float] = Field(None, ge=0, alias="salaryAmount")
     salary_currency: Optional[str] = Field(None, max_length=10, alias="salaryCurrency")
-    is_active: Optional[bool] = Field(None, alias="isActive")
 
 
 class Employee(EmployeeBase):
@@ -42,7 +58,6 @@ class Employee(EmployeeBase):
     company_id: Optional[str] = Field(None, alias="companyId")
     department: Optional[str] = None  # Department name for backward compatibility
     department_info: Optional[Dict[str, Any]] = Field(None, alias="departmentInfo")
-    is_active: bool = Field(True, alias="isActive")
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
@@ -116,7 +131,7 @@ class EmployeeLeaveRequest(EmployeeLeaveRequestBase):
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
 
-# Employee Payroll schemas
+# Employee Payroll schemas - simplified
 class EmployeePayrollBase(BaseCamelModel):
     employee_id: str = Field(..., alias="employeeId")
     period_year: int = Field(..., ge=2000, le=9999, alias="periodYear")
@@ -125,6 +140,7 @@ class EmployeePayrollBase(BaseCamelModel):
     status: str = Field("pending")
     payment_method: Optional[str] = Field(None, alias="paymentMethod")
     paid_date: Optional[str] = Field(None, alias="paidDate")
+    notes: Optional[str] = Field(None, alias="notes")
 
 
 class EmployeePayrollCreate(EmployeePayrollBase):
@@ -138,6 +154,7 @@ class EmployeePayrollUpdate(BaseCamelModel):
     status: Optional[str] = None
     payment_method: Optional[str] = Field(None, alias="paymentMethod")
     paid_date: Optional[str] = Field(None, alias="paidDate")
+    notes: Optional[str] = Field(None, alias="notes")
 
 
 class EmployeePayroll(EmployeePayrollBase):
@@ -148,30 +165,6 @@ class EmployeePayroll(EmployeePayrollBase):
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
 
-# Employee Performance Review schemas
-class EmployeePerformanceReviewBase(BaseCamelModel):
-    employee_id: str = Field(..., alias="employeeId")
-    reviewer_id: str = Field(..., alias="reviewerId")
-    status: str = Field("draft")
-    overall_rating: float = Field(0, ge=0, le=5, alias="overallRating")
-
-
-class EmployeePerformanceReviewCreate(EmployeePerformanceReviewBase):
-    pass
-
-
-class EmployeePerformanceReviewUpdate(BaseCamelModel):
-    status: Optional[str] = None
-    overall_rating: Optional[float] = Field(None, ge=0, le=5, alias="overallRating")
-
-
-class EmployeePerformanceReview(EmployeePerformanceReviewBase):
-    id: str
-    company_id: Optional[str] = Field(None, alias="companyId")
-    employee_name: Optional[str] = Field(None, alias="employeeName")
-    reviewer_name: Optional[str] = Field(None, alias="reviewerName")
-    created_at: datetime = Field(..., alias="createdAt")
-    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
 
 

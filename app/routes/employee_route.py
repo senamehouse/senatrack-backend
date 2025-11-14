@@ -16,10 +16,7 @@ from app.schemas.employee_schema import (
     EmployeeLeaveRequestUpdate,
     EmployeePayroll,
     EmployeePayrollCreate,
-    EmployeePayrollUpdate,
-    EmployeePerformanceReview,
-    EmployeePerformanceReviewCreate,
-    EmployeePerformanceReviewUpdate
+    EmployeePayrollUpdate
 )
 from app.services.employee_service import EmployeeService
 from app.utils.activity_logger import ActivityActor
@@ -71,7 +68,7 @@ async def get_department(
     return dept
 
 
-@router.post("/departments", response_model=dict)
+@router.post("/departments", response_model=EmployeeDepartment)
 async def create_department(
     payload: EmployeeDepartmentCreate,
     session: AsyncSession = Depends(get_async_db),
@@ -79,10 +76,13 @@ async def create_department(
     company_id: str = Depends(get_company_id)
 ):
     dept_id = await svc.create_department(company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
-    return {"message": "Department created", "department_id": dept_id}
+    department = await svc.get_department_by_id(dept_id, company_id)
+    if not department:
+        raise HTTPException(status_code=404, detail="Department not found after creation")
+    return department
 
 
-@router.put("/departments/{department_id}", response_model=dict)
+@router.put("/departments/{department_id}", response_model=EmployeeDepartment)
 async def update_department(
     department_id: str,
     payload: EmployeeDepartmentUpdate,
@@ -93,7 +93,10 @@ async def update_department(
     ok = await svc.update_department(department_id=department_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
     if not ok:
         raise HTTPException(status_code=404, detail="Department not found")
-    return {"message": "Department updated"}
+    department = await svc.get_department_by_id(department_id, company_id)
+    if not department:
+        raise HTTPException(status_code=404, detail="Department not found after update")
+    return department
 
 
 @router.delete("/departments/{department_id}", response_model=dict)
@@ -107,6 +110,25 @@ async def delete_department(
     if not ok:
         raise HTTPException(status_code=404, detail="Department not found")
     return {"message": "Department deleted"}
+
+
+# Company-wide routes (must come BEFORE /{employee_id} to avoid conflicts)
+@router.get("/leaves", response_model=List[EmployeeLeaveRequest])
+async def get_all_leave_requests(
+    session: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+    company_id: str = Depends(get_company_id)
+):
+    return await svc.get_all_leave_requests(company_id)
+
+
+@router.get("/payrolls", response_model=List[EmployeePayroll])
+async def get_all_payrolls(
+    session: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+    company_id: str = Depends(get_company_id)
+):
+    return await svc.get_all_payrolls(company_id)
 
 
 # Parameterized routes must come AFTER specific routes
@@ -123,7 +145,7 @@ async def get_employee(
     return emp
 
 
-@router.post("/", response_model=dict)
+@router.post("/", response_model=Employee)
 async def create_employee(
     payload: EmployeeCreate,
     session: AsyncSession = Depends(get_async_db),
@@ -131,10 +153,13 @@ async def create_employee(
     company_id: str = Depends(get_company_id)
 ):
     emp_id = await svc.create(company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
-    return {"message": "Employee created", "employee_id": emp_id}
+    employee = await svc.get_by_id(emp_id, company_id)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found after creation")
+    return employee
 
 
-@router.put("/{employee_id}", response_model=dict)
+@router.put("/{employee_id}", response_model=Employee)
 async def update_employee(
     employee_id: str,
     payload: EmployeeUpdate,
@@ -145,7 +170,10 @@ async def update_employee(
     ok = await svc.update(employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
     if not ok:
         raise HTTPException(status_code=404, detail="Employee not found")
-    return {"message": "Employee updated"}
+    employee = await svc.get_by_id(employee_id, company_id)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found after update")
+    return employee
 
 
 @router.delete("/{employee_id}", response_model=dict)
@@ -160,15 +188,6 @@ async def delete_employee(
         raise HTTPException(status_code=404, detail="Employee not found")
     return {"message": "Employee deleted"}
 
-
-# Company-wide Leave Request routes (before employee-specific routes)
-@router.get("/leaves", response_model=List[EmployeeLeaveRequest])
-async def get_all_leave_requests(
-    session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user),
-    company_id: str = Depends(get_company_id)
-):
-    return await svc.get_all_leave_requests(company_id)
 
 # Leave Request routes
 @router.get("/{employee_id}/leaves", response_model=List[EmployeeLeaveRequest])
@@ -266,15 +285,6 @@ async def reject_employee_leave(
     return {"message": "Leave request rejected"}
 
 
-# Company-wide Payroll routes (before employee-specific routes)
-@router.get("/payrolls", response_model=List[EmployeePayroll])
-async def get_all_payrolls(
-    session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user),
-    company_id: str = Depends(get_company_id)
-):
-    return await svc.get_all_payrolls(company_id)
-
 # Payroll routes
 @router.get("/{employee_id}/payrolls", response_model=List[EmployeePayroll])
 async def get_employee_payrolls(
@@ -339,78 +349,3 @@ async def delete_employee_payroll(
     if not ok:
         raise HTTPException(status_code=404, detail="Payroll not found")
     return {"message": "Payroll deleted"}
-
-
-# Company-wide Performance Review routes (before employee-specific routes)
-@router.get("/reviews", response_model=List[EmployeePerformanceReview])
-async def get_all_performance_reviews(
-    session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user),
-    company_id: str = Depends(get_company_id)
-):
-    return await svc.get_all_performance_reviews(company_id)
-
-# Performance Review routes
-@router.get("/{employee_id}/reviews", response_model=List[EmployeePerformanceReview])
-async def get_employee_reviews(
-    employee_id: str,
-    session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user),
-    company_id: str = Depends(get_company_id)
-):
-    return await svc.get_performance_reviews(employee_id, company_id)
-
-
-@router.get("/{employee_id}/reviews/{review_id}", response_model=EmployeePerformanceReview)
-async def get_employee_review(
-    employee_id: str,
-    review_id: str,
-    session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user),
-    company_id: str = Depends(get_company_id)
-):
-    review = await svc.get_performance_review_by_id(review_id, employee_id, company_id)
-    if not review:
-        raise HTTPException(status_code=404, detail="Performance review not found")
-    return review
-
-
-@router.post("/{employee_id}/reviews", response_model=dict)
-async def create_employee_review(
-    employee_id: str,
-    payload: EmployeePerformanceReviewCreate,
-    session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user),
-    company_id: str = Depends(get_company_id)
-):
-    review_id = await svc.create_performance_review(employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
-    return {"message": "Performance review created", "review_id": review_id}
-
-
-@router.put("/{employee_id}/reviews/{review_id}", response_model=dict)
-async def update_employee_review(
-    employee_id: str,
-    review_id: str,
-    payload: EmployeePerformanceReviewUpdate,
-    session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user),
-    company_id: str = Depends(get_company_id)
-):
-    ok = await svc.update_performance_review(review_id=review_id, employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
-    if not ok:
-        raise HTTPException(status_code=404, detail="Performance review not found")
-    return {"message": "Performance review updated"}
-
-
-@router.delete("/{employee_id}/reviews/{review_id}", response_model=dict)
-async def delete_employee_review(
-    employee_id: str,
-    review_id: str,
-    session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user),
-    company_id: str = Depends(get_company_id)
-):
-    ok = await svc.delete_performance_review(review_id=review_id, employee_id=employee_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
-    if not ok:
-        raise HTTPException(status_code=404, detail="Performance review not found")
-    return {"message": "Performance review deleted"}

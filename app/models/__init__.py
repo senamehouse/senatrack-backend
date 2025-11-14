@@ -15,7 +15,7 @@ from app.models.service_model import Service
 from app.models.stock_movement_model import StockMovement, StockMovementItem
 from app.models.sales_model import Sale, SaleItem
 from app.models.purchase_order_model import PurchaseOrder
-from app.models.employee_model import EmployeeModel, EmployeeDepartmentModel, EmployeeLeaveModel, EmployeePayrollModel, EmployeePerformanceReviewModel
+from app.models.employee_model import EmployeeModel, EmployeeDepartmentModel, EmployeeLeaveModel, EmployeePayrollModel
 from app.models.file_model import FileRecord
 
 __all__ = [
@@ -25,6 +25,6 @@ __all__ = [
     "Company", "CompanyMember",
     "Proforma", "CompanyInvitation", "ActivationKey",
     "Service", "StockMovement", "StockMovementItem", "Sale", "SaleItem",
-    "PurchaseOrder", "EmployeeModel", "EmployeeDepartmentModel", "EmployeeLeaveModel", "EmployeePayrollModel", "EmployeePerformanceReviewModel",
+    "PurchaseOrder", "EmployeeModel", "EmployeeDepartmentModel", "EmployeeLeaveModel", "EmployeePayrollModel",
     "FileRecord", "UserRoleModel", "UserRoleAssignmentModel", "UserCompanyRoleModel", "UserCompanyRoleAssignmentModel"
 ]
