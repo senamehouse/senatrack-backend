@@ -54,7 +54,7 @@ class EmployeeModel(Base):
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    department_id: Mapped[Optional[str]] = mapped_column(String(20), ForeignKey("employee_departments.id"), nullable=True, index=True)
+    department_id: Mapped[Optional[str]] = mapped_column(String(20), ForeignKey("employee_departments.id"), nullable=True, index=True, name="department")
     position: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     employment_type: Mapped[str] = mapped_column(String(30), nullable=False, default="full_time")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -155,10 +155,7 @@ class EmployeePayrollModel(Base):
     period_month: Mapped[int] = mapped_column(Integer, nullable=False)
     period_year: Mapped[int] = mapped_column(Integer, nullable=False)
     net_salary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     paid_date: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    payment_method: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now())
 
@@ -177,10 +174,7 @@ class EmployeePayrollModel(Base):
                 "year": self.period_year,
             },
             "netSalary": self.net_salary,
-            "status": self.status,
             "paidDate": self.paid_date,
-            "paymentMethod": self.payment_method,
-            "notes": self.notes,
             "createdAt": self.created_at.isoformat() if self.created_at else None,
             "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
         }

@@ -2,6 +2,7 @@ from typing import List, Optional, Dict
 from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from app.core.database import get_db_session
 from app.models.employee_model import (
     EmployeeModel,
@@ -31,7 +32,9 @@ class EmployeeService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(EmployeeModel).where(
+                select(EmployeeModel)
+                .options(selectinload(EmployeeModel.department_relation))
+                .where(
                     EmployeeModel.company_id == company_id,
                     EmployeeModel.is_active == True,
                 )
@@ -45,7 +48,9 @@ class EmployeeService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(EmployeeModel).where(
+                select(EmployeeModel)
+                .options(selectinload(EmployeeModel.department_relation))
+                .where(
                     EmployeeModel.id == employee_id,
                     EmployeeModel.company_id == company_id,
                 )
@@ -59,10 +64,10 @@ class EmployeeService:
         action="CREATE",
         entity_type="employee",
         details=lambda result, _a, kw: f"Employé {kw['payload'].first_name} {kw['payload'].last_name} créé",
-        entity_id=lambda result, _a, _kw: result,
+        entity_id=lambda result, _a, _kw: result.id if isinstance(result, EmployeeSchema) else result,
         extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(mode='json', exclude_none=True)},
     )
-    async def create(self, company_id: str, payload: EmployeeCreate, actor: ActivityActor | None = None) -> str:
+    async def create(self, company_id: str, payload: EmployeeCreate, actor: ActivityActor | None = None) -> EmployeeSchema:
         try:
             session = get_db_session()
             # Always generate employee_number if not provided or empty
@@ -71,11 +76,16 @@ class EmployeeService:
                 employee_number = await self.generate_employee_number(company_id)
             
             # Handle salary - prefer nested salary object, fallback to flat fields
-            salary_data = payload.salary if payload.salary else {}
-            salary_type = salary_data.get('type') if salary_data else None
-            salary_amount = salary_data.get('amount') if salary_data else (payload.salary_amount or 0.0)
-            salary_currency = salary_data.get('currency') if salary_data else (payload.salary_currency or "XOF")
-            salary_payment_frequency = salary_data.get('payment_frequency') if salary_data else None
+            if payload.salary:
+                salary_type = payload.salary.type
+                salary_amount = payload.salary.amount
+                salary_currency = payload.salary.currency
+                salary_payment_frequency = payload.salary.payment_frequency
+            else:
+                salary_type = None
+                salary_amount = payload.salary_amount or 0.0
+                salary_currency = payload.salary_currency or "XOF"
+                salary_payment_frequency = None
             
             emp = EmployeeModel(
                 company_id=company_id,
@@ -98,7 +108,16 @@ class EmployeeService:
             session.add(emp)
             await session.commit()
             await session.refresh(emp)
-            return emp.id
+            
+            # Eagerly load the department relationship to avoid lazy loading issues
+            result = await session.execute(
+                select(EmployeeModel)
+                .options(selectinload(EmployeeModel.department_relation))
+                .where(EmployeeModel.id == emp.id)
+            )
+            emp_with_dept = result.scalar_one()
+            # Return full schema instance
+            return EmployeeSchema.model_validate(emp_with_dept.to_dict())
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating employee: {str(e)}")
 
@@ -109,18 +128,20 @@ class EmployeeService:
         entity_id=lambda _r, _a, kw: kw["employee_id"],
         extra=lambda _r, _a, kw: kw["payload"].model_dump(exclude_unset=True),
     )
-    async def update(self, employee_id: str, company_id: str, payload: EmployeeUpdate, actor: ActivityActor | None = None) -> bool:
+    async def update(self, employee_id: str, company_id: str, payload: EmployeeUpdate, actor: ActivityActor | None = None) -> Optional[EmployeeSchema]:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(EmployeeModel).where(
+                select(EmployeeModel)
+                .options(selectinload(EmployeeModel.department_relation))
+                .where(
                     EmployeeModel.id == employee_id,
                     EmployeeModel.company_id == company_id,
                 )
             )
             emp = result.scalar_one_or_none()
             if not emp:
-                return False
+                return None
             
             # Handle regular fields
             update_data = payload.model_dump(exclude_unset=True, exclude={'salary'})
@@ -137,7 +158,9 @@ class EmployeeService:
             
             emp.updated_at = datetime.now()
             await session.commit()
-            return True
+            await session.refresh(emp, ["department_relation"])
+            # Return full schema instance
+            return EmployeeSchema.model_validate(emp.to_dict())
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating employee: {str(e)}")
 
@@ -271,10 +294,10 @@ class EmployeeService:
         action="CREATE",
         entity_type="employee_department",
         details=lambda result, _a, kw: f"Département {kw['payload'].name} créé",
-        entity_id=lambda result, _a, _kw: result,
+        entity_id=lambda result, _a, _kw: result.id if isinstance(result, EmployeeDepartmentSchema) else result,
         extra=lambda _r, _a, kw: {"payload": kw["payload"].model_dump(exclude_none=True)},
     )
-    async def create_department(self, company_id: str, payload: EmployeeDepartmentCreate, actor: ActivityActor | None = None) -> str:
+    async def create_department(self, company_id: str, payload: EmployeeDepartmentCreate, actor: ActivityActor | None = None) -> EmployeeDepartmentSchema:
         try:
             session = get_db_session()
             department = EmployeeDepartmentModel(
@@ -288,7 +311,8 @@ class EmployeeService:
             session.add(department)
             await session.commit()
             await session.refresh(department)
-            return department.id
+            # Return full schema instance
+            return EmployeeDepartmentSchema.model_validate(department.to_dict())
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating department: {str(e)}")
 
@@ -299,7 +323,7 @@ class EmployeeService:
         entity_id=lambda _r, _a, kw: kw["department_id"],
         extra=lambda _r, _a, kw: kw["payload"].model_dump(exclude_unset=True),
     )
-    async def update_department(self, department_id: str, company_id: str, payload: EmployeeDepartmentUpdate, actor: ActivityActor | None = None) -> bool:
+    async def update_department(self, department_id: str, company_id: str, payload: EmployeeDepartmentUpdate, actor: ActivityActor | None = None) -> Optional[EmployeeDepartmentSchema]:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -310,12 +334,14 @@ class EmployeeService:
             )
             department = result.scalar_one_or_none()
             if not department:
-                return False
+                return None
             for field, value in payload.model_dump(exclude_unset=True).items():
                 setattr(department, field, value)
             department.updated_at = datetime.now()
             await session.commit()
-            return True
+            await session.refresh(department)
+            # Return full schema instance
+            return EmployeeDepartmentSchema.model_validate(department.to_dict())
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating department: {str(e)}")
 
@@ -574,10 +600,7 @@ class EmployeeService:
                 period_year=payload.period_year,
                 period_month=payload.period_month,
                 net_salary=payload.net_salary,
-                status=payload.status,
-                payment_method=payload.payment_method,
                 paid_date=payload.paid_date,
-                notes=payload.notes,
             )
             session.add(pr)
             await session.commit()

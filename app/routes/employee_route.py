@@ -75,10 +75,7 @@ async def create_department(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    dept_id = await svc.create_department(company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
-    department = await svc.get_department_by_id(dept_id, company_id)
-    if not department:
-        raise HTTPException(status_code=404, detail="Department not found after creation")
+    department = await svc.create_department(company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
     return department
 
 
@@ -90,12 +87,9 @@ async def update_department(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.update_department(department_id=department_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
-    if not ok:
-        raise HTTPException(status_code=404, detail="Department not found")
-    department = await svc.get_department_by_id(department_id, company_id)
+    department = await svc.update_department(department_id=department_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
     if not department:
-        raise HTTPException(status_code=404, detail="Department not found after update")
+        raise HTTPException(status_code=404, detail="Department not found")
     return department
 
 
@@ -152,10 +146,7 @@ async def create_employee(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    emp_id = await svc.create(company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
-    employee = await svc.get_by_id(emp_id, company_id)
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found after creation")
+    employee = await svc.create(company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
     return employee
 
 
@@ -167,12 +158,9 @@ async def update_employee(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.update(employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
-    if not ok:
-        raise HTTPException(status_code=404, detail="Employee not found")
-    employee = await svc.get_by_id(employee_id, company_id)
+    employee = await svc.update(employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
     if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found after update")
+        raise HTTPException(status_code=404, detail="Employee not found")
     return employee
 
 
