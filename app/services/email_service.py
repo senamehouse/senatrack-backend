@@ -73,7 +73,7 @@ class EmailService:
         
         try:
             # Send email
-            result = resend.emails.send({
+            result = resend.Emails.send({
                 "from": from_addr,
                 "to": to,
                 "subject": subject,

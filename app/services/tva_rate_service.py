@@ -255,3 +255,4 @@ class TvaRateService:
         for rate in default_rates:
             rate.is_default = False
 
+

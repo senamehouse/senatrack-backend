@@ -40,3 +40,4 @@ class TvaRate(TvaRateBase):
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
+

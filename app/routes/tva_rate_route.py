@@ -93,3 +93,4 @@ async def set_default_tva_rate(
     """Set a TVA rate as the default for the company"""
     return await tva_rate_service.set_default(rate_id, company_id, actor=ActivityActor(current_user.id, None))
 
+
