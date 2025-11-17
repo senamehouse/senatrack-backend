@@ -124,6 +124,6 @@ async def reset_password(
 ):
     """Confirm password reset with token"""
     return await auth_service.confirm_password_reset(
-        password_reset_confirm.token,
+        password_reset_confirm.code,
         password_reset_confirm.new_password
     )

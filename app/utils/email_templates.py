@@ -37,8 +37,9 @@ def get_base_template(content: str, app_name: str, app_description: Optional[str
     """
 
 
-def get_password_reset_template(reset_url: str, app_name: str) -> str:
+def get_password_reset_template(code: str, app_name: str, app_url: str) -> str:
     """Template for password reset emails"""
+    instructions = f"Accédez à {app_url}/reinitialiser-mot-de-passe/confirmer et saisissez le code ci-dessous."
     content = f"""
       <div style="background: #f8fafc; padding: 30px; border-radius: 8px; margin-bottom: 30px;">
         <h2 style="color: #1f2937; margin-bottom: 20px;">Réinitialisation de mot de passe</h2>
@@ -48,23 +49,22 @@ def get_password_reset_template(reset_url: str, app_name: str) -> str:
         </p>
         
         <p style="color: #374151; margin-bottom: 20px;">
-          Vous avez demandé à réinitialiser votre mot de passe. Cliquez sur le bouton ci-dessous pour créer un nouveau mot de passe.
+          Vous avez demandé à réinitialiser votre mot de passe. {instructions}
         </p>
         
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="{reset_url}" 
-             style="background: #3b82f6; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block;">
-            Réinitialiser mon mot de passe
-          </a>
+        <div style="background: white; border-radius: 8px; padding: 24px; text-align: center; margin-bottom: 24px; border: 1px solid #e5e7eb;">
+          <p style="color: #6b7280; font-size: 14px; margin-bottom: 8px; letter-spacing: 1px;">CODE DE VÉRIFICATION</p>
+          <p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #1f2937;">{code}</p>
+          <p style="color: #9ca3af; font-size: 12px; margin-top: 8px;">Ce code expire dans 1 heure.</p>
         </div>
         
         <p style="color: #6b7280; font-size: 14px; text-align: center; margin-top: 30px;">
-          Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur :<br>
-          <a href="{reset_url}" style="color: #3b82f6; word-break: break-all;">{reset_url}</a>
+          Si vous ne parvenez pas à accéder au formulaire, copiez et collez cette adresse dans votre navigateur :<br>
+          <a href="{app_url}/reinitialiser-mot-de-passe/confirmer" style="color: #3b82f6; word-break: break-all;">{app_url}/reinitialiser-mot-de-passe/confirmer</a>
         </p>
         
         <p style="color: #9ca3af; font-size: 12px; margin-top: 30px;">
-          ⚠️ Ce lien expire dans 1 heure. Si vous n'avez pas demandé cette réinitialisation, ignorez cet email.
+          ⚠️ Ce code expire dans 1 heure. Si vous n'avez pas demandé cette réinitialisation, ignorez cet email.
         </p>
       </div>
     """

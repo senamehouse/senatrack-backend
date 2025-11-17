@@ -64,7 +64,7 @@ class PasswordReset(BaseCamelModel):
 class PasswordResetConfirm(BaseCamelModel):
     """Schema for password reset confirmation"""
     
-    token: str = Field(..., description="Reset token")
+    code: str = Field(..., min_length=6, max_length=6, description="Verification code")
     new_password: str = Field(..., min_length=8, max_length=100, description="New password (min 8 characters)", alias="newPassword")
 
 class UserProfileResponse(BaseCamelModel):

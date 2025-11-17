@@ -100,15 +100,17 @@ class EmailService:
     def send_password_reset_email(
         self,
         to: str,
-        reset_url: str,
+        code: str,
+        app_url: str,
         app_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Send password reset email.
+        Send password reset email with verification code.
         
         Args:
             to: Recipient email address
-            reset_url: Password reset URL
+            code: Six-digit verification code
+            app_url: Base application URL for reset instructions
             app_name: Optional app name (defaults to env variable)
         
         Returns:
@@ -119,7 +121,7 @@ class EmailService:
         config = get_app_config()
         app_name = app_name or config["app_name"]
         
-        html_content = get_password_reset_template(reset_url, app_name)
+        html_content = get_password_reset_template(code, app_name, app_url)
         subject = f"Réinitialisation de mot de passe - {app_name}"
         
         return self.send_email(

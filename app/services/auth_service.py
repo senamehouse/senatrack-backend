@@ -327,8 +327,9 @@ class AuthService:
             # Don't reveal if user exists (security best practice)
             return {"message": "If an account exists with this email, a reset link has been sent."}
         
-        # Generate secure token
+        # Generate secure token and verification code
         reset_token = secrets.token_urlsafe(32)
+        reset_code = f"{secrets.randbelow(1_000_000):06d}"
         
         # Create reset token record (expires in 1 hour)
         session = get_db_session()
@@ -344,11 +345,21 @@ class AuthService:
             .values(used=True)
         )
         
+        # Ensure code uniqueness (very low collision probability but guard anyway)
+        while True:
+            existing_code = await session.execute(
+                select(PasswordResetToken).where(PasswordResetToken.code == reset_code, PasswordResetToken.used == False)
+            )
+            if not existing_code.scalar_one_or_none():
+                break
+            reset_code = f"{secrets.randbelow(1_000_000):06d}"
+        
         # Create new token
         reset_token_record = PasswordResetToken(
             user_id=user.id,
             email=user.email,
             token=reset_token,
+            code=reset_code,
             expires_at=expires_at
         )
         session.add(reset_token_record)
@@ -358,12 +369,11 @@ class AuthService:
         if settings.DATABASE_MODE == "online":
             # Send email via email service
             config = get_app_config()
-            reset_url = f"{config['app_url']}/reinitialiser-mot-de-passe/confirmer?token={reset_token}"
-            
             try:
                 email_service.send_password_reset_email(
                     to=user.email,
-                    reset_url=reset_url,
+                    code=reset_code,
+                    app_url=config["app_url"],
                     app_name=config["app_name"]
                 )
                 return {"message": "Password reset email sent successfully"}
@@ -374,14 +384,14 @@ class AuthService:
         else:
             # Offline mode - return token for admin/user to use manually
             return {
-                "message": "Password reset token generated (offline mode)",
-                "token": reset_token,  # Only in offline mode
-                "expires_at": expires_at.isoformat(),
-                "reset_url": f"/reinitialiser-mot-de-passe/confirmer?token={reset_token}"
+                "message": "Password reset code generated (offline mode)",
+                "token": reset_token,  # maintain for backward compatibility
+                "code": reset_code,
+                "expires_at": expires_at.isoformat()
             }
     
-    async def confirm_password_reset(self, token: str, new_password: str) -> Dict[str, str]:
-        """Confirm password reset with token"""
+    async def confirm_password_reset(self, code: str, new_password: str) -> Dict[str, str]:
+        """Confirm password reset with verification code"""
         from app.models.password_reset_model import PasswordResetToken
         
         session = get_db_session()
@@ -389,7 +399,7 @@ class AuthService:
         # Find valid token
         result = await session.execute(
             select(PasswordResetToken).where(
-                PasswordResetToken.token == token,
+                PasswordResetToken.code == code,
                 PasswordResetToken.used == False,
                 PasswordResetToken.expires_at > datetime.utcnow()
             )
