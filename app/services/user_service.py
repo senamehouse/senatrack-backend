@@ -80,7 +80,7 @@ class UserService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating user: {str(e)}")
     
-    async def update_user(self, user_id: str, user_data: UserUpdate) -> User:
+    async def update_user(self, user_id: str, user_data: UserUpdate | Dict[str, Any]) -> User:
         """Update a user by ID and return the updated user"""
         try:
             session = get_db_session()
@@ -94,7 +94,10 @@ class UserService:
                 raise HTTPException(status_code=404, detail="User not found")
             
             # Convert schema to dict, excluding unset fields
-            update_dict = user_data.model_dump(exclude_unset=True)
+            if isinstance(user_data, dict):
+                update_dict = user_data
+            else:
+                update_dict = user_data.model_dump(exclude_unset=True)
             
             # Update fields
             if 'name' in update_dict:
