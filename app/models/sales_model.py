@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, DateTime, Boolean, Float, Text, ForeignKey
+from sqlalchemy import String, Integer, DateTime, Boolean, Float, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.sql import func
 from app.core.database import Base
 from app.utils.id_generator import generate_id
@@ -9,10 +9,13 @@ from app.utils.id_generator import generate_id
 
 class Sale(Base):
     __tablename__ = "sales"
+    __table_args__ = (
+        UniqueConstraint("company_id", "reference", name="uq_sales_company_reference"),
+    )
 
     id: Mapped[str] = mapped_column(String(20), primary_key=True, index=True, default=generate_id)
     company_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
-    reference: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    reference: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     client_id: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     client_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
