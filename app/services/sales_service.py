@@ -93,24 +93,25 @@ class SalesService:
                 sale_dict["seller_name"] = None
             
             # Include items - use schema for proper camelCase conversion
-            from app.schemas.sales_schema import SaleItemResponse
+            from app.schemas.sales_schema import SaleItem as SaleItemSchema
             items_data = []
             for item in sale.items:
                 item_dict = item.to_dict()
-                # Create schema instance for proper camelCase conversion
-                item_response = SaleItemResponse(
-                    item_id=item_dict["product_id"],
-                    item_name=item_dict["product_name"],
-                    item_reference=item_dict.get("product_reference", ""),
+                item_schema = SaleItemSchema(
+                    id=item_dict["id"],
+                    sale_id=item_dict["sale_id"],
+                    product_id=item_dict["product_id"],
+                    product_name=item_dict["product_name"],
+                    product_reference=item_dict.get("product_reference"),
                     item_type=item_dict.get("item_type", "product"),
                     quantity=item_dict["quantity"],
                     sell_price=item_dict["sell_price"],
                     original_sell_price=item_dict.get("original_sell_price"),
-                    total=item_dict["total"],
-                    unit=item_dict.get("unit", ""),
+                    total_price=item_dict["total"],
+                    unit=item_dict.get("unit"),
                     price_modified=item_dict.get("price_modified", False),
                 )
-                items_data.append(item_response.model_dump())
+                items_data.append(item_schema.model_dump())
             sale_dict["items"] = items_data
             
             # Create schema first with backend enum values
