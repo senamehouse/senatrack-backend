@@ -3,6 +3,8 @@ from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db_session
 from app.models.sales_model import Sale as SaleModel, SaleItem as SaleItemModel
 from app.models.user_model import User as UserModel
@@ -180,9 +182,7 @@ class SalesService:
     async def create(self, company_id: str, payload: SaleCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
-
-            # Always assign a fresh unique reference on the backend
-            payload.reference = await self.generate_sale_reference(company_id)
+            max_attempts = 5
 
             # Validate sufficient stock for product items before creating the sale
             from app.models.product_model import Product as ProductModel
@@ -205,25 +205,41 @@ class SalesService:
                             detail=f"Insufficient stock for product '{product.name}' (available {current_stock}, requested {item.quantity})"
                         )
 
-            sale = SaleModel(
-                company_id=company_id,
-                reference=payload.reference,
-                date=payload.date,
-                client_id=payload.client_id if payload.client_id else None,
-                client_name=payload.client_name if payload.client_name else None,
-                seller_id=payload.seller_id,
-                subtotal=payload.subtotal,
-                discount=payload.discount,
-                tva_rate=payload.tva_rate,
-                tva_amount=payload.tva_amount,
-                total=payload.total,
-                payment_status=payload.payment_status.value,
-                amount_paid=payload.amount_paid,
-                payment_reference=payload.payment_reference,
-            )
-            session.add(sale)
-            await session.commit()
-            await session.refresh(sale)
+            sale: SaleModel | None = None
+            for attempt in range(max_attempts):
+                # Always assign a fresh unique reference on the backend scoped to company
+                payload.reference = await self.generate_sale_reference(company_id, session=session)
+
+                sale_candidate = SaleModel(
+                    company_id=company_id,
+                    reference=payload.reference,
+                    date=payload.date,
+                    client_id=payload.client_id if payload.client_id else None,
+                    client_name=payload.client_name if payload.client_name else None,
+                    seller_id=payload.seller_id,
+                    subtotal=payload.subtotal,
+                    discount=payload.discount,
+                    tva_rate=payload.tva_rate,
+                    tva_amount=payload.tva_amount,
+                    total=payload.total,
+                    payment_status=payload.payment_status.value,
+                    amount_paid=payload.amount_paid,
+                    payment_reference=payload.payment_reference,
+                )
+                session.add(sale_candidate)
+                try:
+                    await session.commit()
+                    await session.refresh(sale_candidate)
+                    sale = sale_candidate
+                    break
+                except IntegrityError as exc:
+                    await session.rollback()
+                    if "ix_sales_reference" not in str(exc.orig) or attempt == max_attempts - 1:
+                        raise
+                    continue
+
+            if sale is None:
+                raise HTTPException(status_code=500, detail="Unable to reserve a unique sale reference")
             
             # Add sale items
             for item in payload.items:
@@ -341,26 +357,24 @@ class SalesService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error deleting sale: {str(e)}")
 
-    async def generate_sale_reference(self, company_id: str) -> str:
+    async def generate_sale_reference(self, company_id: str, session: AsyncSession | None = None) -> str:
         """Generate a unique sale reference like VNT-YYYY-0001 scoped to company."""
         try:
-            session = get_db_session()
+            session = session or get_db_session()
             year = datetime.utcnow().year
             prefix = f"VNT-{year}-"
             result = await session.execute(
-                select(SaleModel.reference).where(
+                select(SaleModel.reference)
+                .where(
                     SaleModel.company_id == company_id,
                     SaleModel.reference.like(f"{prefix}%")
                 )
+                .order_by(SaleModel.reference.desc())
+                .with_for_update()
             )
-            refs = [row[0] for row in result.fetchall()]
-            existing = set(refs)
-            counter = 1
-            ref = f"{prefix}{counter:04d}"
-            while ref in existing:
-                counter += 1
-                ref = f"{prefix}{counter:04d}"
-            return ref
+            last_ref = result.scalars().first()
+            counter = int(last_ref.split("-")[-1]) if last_ref else 0
+            return f"{prefix}{counter + 1:04d}"
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error generating sale reference: {str(e)}")
 
