@@ -9,10 +9,12 @@ from app.core.database import get_db_session
 from app.models.sales_model import Sale as SaleModel, SaleItem as SaleItemModel
 from app.models.user_model import User as UserModel
 from app.schemas.sales_schema import (
-    Sale as SaleSchema, 
+    Sale as SaleSchema,
+    SaleResponse,
     SaleCreate, 
     SaleUpdate, 
     SaleProfit,
+    PaymentStatus,
 )
 from app.utils.activity_logger import audit, ActivityActor
 from app.schemas.stats_schema import (
@@ -44,9 +46,11 @@ class SalesService:
                 sellers = sellers_result.scalars().all()
                 sellers_dict = {seller.id: seller.name for seller in sellers}
             
-            # Get all sales
+            # Get all sales, ordered by date descending (most recent first)
             sales_result = await session.execute(
-                select(SaleModel).where(SaleModel.company_id == company_id)
+                select(SaleModel)
+                .where(SaleModel.company_id == company_id)
+                .order_by(SaleModel.date.desc())
             )
             sales = sales_result.scalars().all()
             
@@ -68,7 +72,7 @@ class SalesService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving sales: {str(e)}")
 
-    async def get_by_id(self, sale_id: str, company_id: str) -> Optional[SaleSchema]:
+    async def get_by_id(self, sale_id: str, company_id: str) -> Optional[SaleResponse]:
         try:
             session = get_db_session()
             result = await session.execute(
@@ -92,36 +96,29 @@ class SalesService:
             else:
                 sale_dict["seller_name"] = None
             
-            # Include items - use schema for proper camelCase conversion
-            from app.schemas.sales_schema import SaleItem as SaleItemSchema
+            # Include items - use SaleItemResponse schema for frontend format
+            from app.schemas.sales_schema import SaleItemResponse, SaleProfitItem, SaleProfitItemInfo
+            from app.models.product_model import Product as ProductModel
+            
             items_data = []
             for item in sale.items:
                 item_dict = item.to_dict()
-                item_schema = SaleItemSchema(
-                    id=item_dict["id"],
-                    sale_id=item_dict["sale_id"],
-                    product_id=item_dict["product_id"],
-                    product_name=item_dict["product_name"],
-                    product_reference=item_dict.get("product_reference"),
+                # Use SaleItemResponse schema to transform product_id -> item_id, etc.
+                item_response = SaleItemResponse(
+                    item_id=item_dict["product_id"],
+                    item_name=item_dict["product_name"],
+                    item_reference=item_dict.get("product_reference"),
                     item_type=item_dict.get("item_type", "product"),
                     quantity=item_dict["quantity"],
                     sell_price=item_dict["sell_price"],
                     original_sell_price=item_dict.get("original_sell_price"),
-                    total_price=item_dict["total"],
+                    total=item_dict["total"],
                     unit=item_dict.get("unit"),
                     price_modified=item_dict.get("price_modified", False),
                 )
-                items_data.append(item_schema.model_dump())
-            sale_dict["items"] = items_data
-            
-            # Create schema first with backend enum values
-            sale_schema = SaleSchema(**sale_dict)
-            # Convert to dict (automatic camelCase via BaseCamelModel)
-            sale_response = sale_schema.model_dump()
+                items_data.append(item_response)
             
             # Calculate profit
-            from app.models.product_model import Product as ProductModel
-            from app.schemas.sales_schema import SaleProfit, SaleProfitItem, SaleProfitItemInfo
             total_cost = 0
             total_profit = 0
             items_profit = []
@@ -167,7 +164,31 @@ class SalesService:
                 averageMargin=average_margin,
                 items=items_profit
             )
-            sale_response["profit"] = profit_schema.model_dump()
+            
+            # Construct response using SaleResponse schema
+            # Use model fields directly for datetime to avoid string conversion issues
+            sale_response = SaleResponse(
+                id=sale.id,
+                company_id=sale.company_id,
+                reference=sale.reference,
+                date=sale.date,
+                client_id=sale.client_id,
+                client_name=sale.client_name,
+                seller_id=sale.seller_id,
+                seller_name=sale_dict.get("seller_name"),
+                subtotal=sale.subtotal,
+                discount=sale.discount or 0.0,
+                tva_rate=sale.tva_rate or 0.0,
+                tva_amount=sale.tva_amount or 0.0,
+                total=sale.total,
+                payment_status=PaymentStatus(sale.payment_status),
+                amount_paid=sale.amount_paid or 0.0,
+                payment_reference=sale.payment_reference,
+                created_at=sale.created_at,
+                updated_at=sale.updated_at,
+                items=items_data,
+                profit=profit_schema,
+            )
             
             return sale_response
         except Exception as e:

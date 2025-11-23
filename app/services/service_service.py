@@ -13,10 +13,12 @@ class ServiceService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(ServiceModel).where(
+                select(ServiceModel)
+                .where(
                     ServiceModel.company_id == company_id,
                     ServiceModel.is_active == True,
                 )
+                .order_by(ServiceModel.created_at.desc())
             )
             services = result.scalars().all()
             return [ServiceSchema.model_validate(s.to_dict()) for s in services]

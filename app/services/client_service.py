@@ -13,10 +13,12 @@ class ClientService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(ClientModel).where(
+                select(ClientModel)
+                .where(
                     ClientModel.company_id == company_id,
                     ClientModel.is_active == True,
                 )
+                .order_by(ClientModel.created_at.desc())
             )
             clients = result.scalars().all()
             return [ClientSchema(**c.to_dict()) for c in clients]

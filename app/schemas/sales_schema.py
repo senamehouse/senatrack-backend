@@ -113,3 +113,13 @@ class Sale(SaleBase):
     items: List[SaleItem] = []
     profit: Optional[SaleProfit] = None
 
+
+class SaleResponse(SaleBase):
+    """Response schema for sale with frontend-formatted items"""
+    id: str
+    company_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    items: List[SaleItemResponse] = []
+    profit: Optional[SaleProfit] = None
+

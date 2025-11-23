@@ -38,6 +38,7 @@ class EmployeeService:
                     EmployeeModel.company_id == company_id,
                     EmployeeModel.is_active == True,
                 )
+                .order_by(EmployeeModel.created_at.desc())
             )
             rows = result.scalars().all()
             return [EmployeeSchema.model_validate(r.to_dict()) for r in rows]
@@ -265,10 +266,12 @@ class EmployeeService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(EmployeeDepartmentModel).where(
+                select(EmployeeDepartmentModel)
+                .where(
                     EmployeeDepartmentModel.company_id == company_id,
                     EmployeeDepartmentModel.is_active == True,
                 )
+                .order_by(EmployeeDepartmentModel.created_at.desc())
             )
             departments = result.scalars().all()
             return [EmployeeDepartmentSchema.model_validate(d.to_dict()) for d in departments]
@@ -376,9 +379,11 @@ class EmployeeService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(EmployeeLeaveModel).where(
+                select(EmployeeLeaveModel)
+                .where(
                     EmployeeLeaveModel.company_id == company_id,
                 )
+                .order_by(EmployeeLeaveModel.created_at.desc())
             )
             rows = result.scalars().all()
             return [EmployeeLeaveRequestSchema.model_validate(r.to_dict()) for r in rows]
@@ -546,9 +551,11 @@ class EmployeeService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(EmployeePayrollModel).where(
+                select(EmployeePayrollModel)
+                .where(
                     EmployeePayrollModel.company_id == company_id,
                 )
+                .order_by(EmployeePayrollModel.created_at.desc())
             )
             rows = result.scalars().all()
             return [EmployeePayrollSchema.model_validate(r.to_dict()) for r in rows]

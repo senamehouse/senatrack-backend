@@ -12,7 +12,9 @@ class StockMovementService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(StockMovementModel).where(StockMovementModel.company_id == company_id)
+                select(StockMovementModel)
+                .where(StockMovementModel.company_id == company_id)
+                .order_by(StockMovementModel.date.desc())
             )
             movements = result.scalars().all()
             return [StockMovementSchema(**m.to_dict()) for m in movements]
@@ -205,10 +207,12 @@ class StockMovementService:
                 return []
 
             result = await session.execute(
-                select(StockMovementModel).where(
+                select(StockMovementModel)
+                .where(
                     StockMovementModel.company_id == company_id,
                     StockMovementModel.document_reference == sale_reference
                 )
+                .order_by(StockMovementModel.date.desc())
             )
             movements = result.scalars().all()
             return [StockMovementSchema(**m.to_dict()) for m in movements]

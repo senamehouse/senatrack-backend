@@ -13,10 +13,12 @@ class SupplierService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(SupplierModel).where(
+                select(SupplierModel)
+                .where(
                     SupplierModel.company_id == company_id,
                     SupplierModel.is_active == True,
                 )
+                .order_by(SupplierModel.created_at.desc())
             )
             suppliers = result.scalars().all()
             return [SupplierSchema(**s.to_dict()) for s in suppliers]

@@ -320,6 +320,7 @@ class ProductService:
             query = select(ProductModel).where(ProductModel.is_active == True)
             if company_id:
                 query = query.where(ProductModel.company_id == company_id)
+            query = query.order_by(ProductModel.created_at.desc())
             result = await session.execute(query)
             products = result.scalars().all()
             return [ProductSchema(**product.to_dict()) for product in products]

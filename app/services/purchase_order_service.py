@@ -13,7 +13,9 @@ class PurchaseOrderService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(PurchaseOrderModel).where(PurchaseOrderModel.company_id == company_id)
+                select(PurchaseOrderModel)
+                .where(PurchaseOrderModel.company_id == company_id)
+                .order_by(PurchaseOrderModel.created_at.desc())
             )
             rows = result.scalars().all()
             return [PurchaseOrderSchema(**r.to_dict()) for r in rows]

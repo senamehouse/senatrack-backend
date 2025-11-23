@@ -5,7 +5,8 @@ from app.core.dependencies import get_current_user, get_company_id
 from app.core.database import get_async_db
 from app.schemas.user_schema import User
 from app.schemas.sales_schema import (
-    Sale as SaleSchema, 
+    Sale as SaleSchema,
+    SaleResponse,
     SaleCreate, 
     SaleUpdate, 
     SaleProfit,
@@ -32,7 +33,7 @@ async def get_sales(
     return await svc.get_all(company_id)
 
 
-@router.get("/{sale_id}", response_model=SaleSchema)
+@router.get("/{sale_id}", response_model=SaleResponse)
 async def get_sale(
     sale_id: str,
     session: AsyncSession = Depends(get_async_db),
