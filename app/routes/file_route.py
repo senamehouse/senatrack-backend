@@ -63,7 +63,7 @@ async def delete_file(
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
-    ok = await svc.delete_file(file_id=file_id, actor=ActivityActor(current_user.id, None))
+    ok = await svc.delete_file(file_id=file_id, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="File not found")
     return {"message": "File deleted"}

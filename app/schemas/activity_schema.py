@@ -10,6 +10,8 @@ class ActivityLogBase(BaseCamelModel):
     action: str = Field(..., min_length=1, max_length=255)
     details: str = Field(..., min_length=1)
     user_id: Optional[str] = Field(None, alias="userId")
+    user_email: Optional[str] = Field(None, alias="userEmail")
+    user_name: Optional[str] = Field(None, alias="userName")
     company_id: Optional[str] = Field(None, alias="companyId")
     entity_type: Optional[str] = Field(None, max_length=100, alias="entityType")
     entity_id: Optional[str] = Field(None, max_length=100, alias="entityId")

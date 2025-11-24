@@ -42,7 +42,7 @@ async def create_client(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    client_id = await service.create_client(company_id=company_id, client_data=payload, actor=ActivityActor(current_user.id, None))
+    client_id = await service.create_client(company_id=company_id, client_data=payload, actor=ActivityActor.from_user(current_user))
     return {"message": "Client created", "client_id": client_id}
 
 
@@ -54,7 +54,7 @@ async def update_client(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await service.update_client(client_id=client_id, company_id=company_id, client_data=payload, actor=ActivityActor(current_user.id, None))
+    ok = await service.update_client(client_id=client_id, company_id=company_id, client_data=payload, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Client not found")
     return {"message": "Client updated"}
@@ -67,7 +67,7 @@ async def delete_client(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await service.delete_client(client_id=client_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    ok = await service.delete_client(client_id=client_id, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Client not found")
     return {"message": "Client deleted"}

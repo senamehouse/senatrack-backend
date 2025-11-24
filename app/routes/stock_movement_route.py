@@ -54,7 +54,7 @@ async def create_movement(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    movement_id = await svc.create(company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
+    movement_id = await svc.create(company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
     return {"message": "Stock movement created", "movement_id": movement_id}
 
 
@@ -66,7 +66,7 @@ async def update_movement(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.update(movement_id=movement_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
+    ok = await svc.update(movement_id=movement_id, company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Stock movement not found")
     return {"message": "Stock movement updated"}
@@ -79,7 +79,7 @@ async def delete_movement(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.delete(movement_id=movement_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    ok = await svc.delete(movement_id=movement_id, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Stock movement not found")
     return {"message": "Stock movement deleted"}

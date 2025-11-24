@@ -60,7 +60,7 @@ async def update_company(
     current_user: User = Depends(get_current_user)
 ):
     """Update a company"""
-    return await company_service.update_company(company_id=company_id, company_data=company_data, actor=ActivityActor(current_user.id, None))
+    return await company_service.update_company(company_id=company_id, company_data=company_data, actor=ActivityActor.from_user(current_user))
 
 @router.delete("/{company_id}")
 async def delete_company(
@@ -69,7 +69,7 @@ async def delete_company(
     current_user: User = Depends(get_current_user)
 ):
     """Delete a company"""
-    success = await company_service.delete_company(company_id=company_id, actor=ActivityActor(current_user.id, None))
+    success = await company_service.delete_company(company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete company")
     return {"message": "Company deleted successfully"}

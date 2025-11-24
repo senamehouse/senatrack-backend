@@ -57,7 +57,7 @@ async def create_tva_rate(
     # Ensure company_id matches
     if rate_data.company_id != company_id:
         raise HTTPException(status_code=403, detail="Company ID mismatch")
-    return await tva_rate_service.create(rate_data, actor=ActivityActor(current_user.id, None))
+    return await tva_rate_service.create(rate_data, actor=ActivityActor.from_user(current_user))
 
 @router.put("/{rate_id}", response_model=TvaRate)
 async def update_tva_rate(
@@ -68,7 +68,7 @@ async def update_tva_rate(
     company_id: str = Depends(get_company_id)
 ):
     """Update a TVA rate"""
-    return await tva_rate_service.update(rate_id, rate_data, company_id, actor=ActivityActor(current_user.id, None))
+    return await tva_rate_service.update(rate_id, rate_data, company_id, actor=ActivityActor.from_user(current_user))
 
 @router.delete("/{rate_id}", response_model=dict)
 async def delete_tva_rate(
@@ -78,7 +78,7 @@ async def delete_tva_rate(
     company_id: str = Depends(get_company_id)
 ):
     """Delete a TVA rate (soft delete)"""
-    success = await tva_rate_service.delete(rate_id, company_id, actor=ActivityActor(current_user.id, None))
+    success = await tva_rate_service.delete(rate_id, company_id, actor=ActivityActor.from_user(current_user))
     if not success:
         raise HTTPException(status_code=404, detail="TVA rate not found")
     return {"message": "TVA rate deleted successfully"}
@@ -91,7 +91,7 @@ async def set_default_tva_rate(
     company_id: str = Depends(get_company_id)
 ):
     """Set a TVA rate as the default for the company"""
-    return await tva_rate_service.set_default(rate_id, company_id, actor=ActivityActor(current_user.id, None))
+    return await tva_rate_service.set_default(rate_id, company_id, actor=ActivityActor.from_user(current_user))
 
 
 

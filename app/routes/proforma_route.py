@@ -23,7 +23,7 @@ async def create_proforma(
     """Create a new proforma"""
     # enforce company id from header
     proforma_data.company_id = proforma_data.company_id
-    return await proforma_service.create_proforma(proforma_data, actor=ActivityActor(current_user.id, None))
+    return await proforma_service.create_proforma(proforma_data, actor=ActivityActor.from_user(current_user))
 
 @router.get("/", response_model=List[Proforma])
 async def get_company_proformas(
@@ -64,7 +64,7 @@ async def update_proforma(
     company_id: str = Depends(get_company_id)
 ):
     """Update a proforma"""
-    return await proforma_service.update_proforma(proforma_id=proforma_id, proforma_data=proforma_data, actor=ActivityActor(current_user.id, None))
+    return await proforma_service.update_proforma(proforma_id=proforma_id, proforma_data=proforma_data, actor=ActivityActor.from_user(current_user))
 
 @router.delete("/{proforma_id}")
 async def delete_proforma(
@@ -74,7 +74,7 @@ async def delete_proforma(
     company_id: str = Depends(get_company_id)
 ):
     """Delete a proforma"""
-    success = await proforma_service.delete_proforma(proforma_id=proforma_id, actor=ActivityActor(current_user.id, None))
+    success = await proforma_service.delete_proforma(proforma_id=proforma_id, actor=ActivityActor.from_user(current_user))
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete proforma")
     return {"message": "Proforma deleted successfully"}

@@ -22,7 +22,7 @@ async def create_user_role(
 ):
     """Create a new platform role (admin only)"""
     # TODO: Add admin permission check
-    return await user_service.create_role(role_data=role_data, actor=ActivityActor(current_user.id, None))
+    return await user_service.create_role(role_data=role_data, actor=ActivityActor.from_user(current_user))
 
 @router.get("/", response_model=List[UserRole])
 async def get_all_user_roles(
@@ -62,7 +62,7 @@ async def update_user_role(
 ):
     """Update a platform role (admin only)"""
     # TODO: Add admin permission check
-    return await user_service.update_role(role_id=role_id, role_data=role_data, actor=ActivityActor(current_user.id, None))
+    return await user_service.update_role(role_id=role_id, role_data=role_data, actor=ActivityActor.from_user(current_user))
 
 @router.delete("/{role_id}")
 async def delete_user_role(
@@ -72,7 +72,7 @@ async def delete_user_role(
 ):
     """Delete a platform role (admin only)"""
     # TODO: Add admin permission check
-    success = await user_service.delete_role(role_id=role_id, actor=ActivityActor(current_user.id, None))
+    success = await user_service.delete_role(role_id=role_id, actor=ActivityActor.from_user(current_user))
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete role")
     return {"message": "Role deleted successfully"}
@@ -86,7 +86,7 @@ async def assign_role_to_user(
 ):
     """Assign a platform role to a user (admin only)"""
     # TODO: Add admin permission check
-    assignment = await user_service.assign_role_to_user(user_id=assignment_data.user_id, role_id=role_id, assigned_by=current_user.id, actor=ActivityActor(current_user.id, None))
+    assignment = await user_service.assign_role_to_user(user_id=assignment_data.user_id, role_id=role_id, assigned_by=current_user.id, actor=ActivityActor.from_user(current_user))
     return {"message": "Role assigned successfully", "assignment_id": assignment.id}
 
 @router.delete("/{role_id}/assign/{user_id}")
@@ -98,7 +98,7 @@ async def remove_role_from_user(
 ):
     """Remove a platform role from a user (admin only)"""
     # TODO: Add admin permission check
-    success = await user_service.remove_role_from_user(user_id=user_id, role_id=role_id, actor=ActivityActor(current_user.id, None))
+    success = await user_service.remove_role_from_user(user_id=user_id, role_id=role_id, actor=ActivityActor.from_user(current_user))
     if not success:
         raise HTTPException(status_code=500, detail="Failed to remove role")
     return {"message": "Role removed successfully"}

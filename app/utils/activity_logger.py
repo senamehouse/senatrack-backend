@@ -11,9 +11,20 @@ activity_service = ActivityService()
 
 
 class ActivityActor:
-    def __init__(self, user_id: Optional[str], user_email: Optional[str]):
+    def __init__(self, user_id: Optional[str], user_email: Optional[str], user_name: Optional[str] = None):
         self.user_id = user_id
         self.user_email = user_email
+        self.user_name = user_name
+
+    @classmethod
+    def from_user(cls, user: Any | None) -> "ActivityActor | None":
+        if user is None:
+            return None
+        return cls(
+            getattr(user, "id", None),
+            getattr(user, "email", None),
+            getattr(user, "name", None),
+        )
 
 
 async def log_activity(
@@ -30,6 +41,8 @@ async def log_activity(
         action=action,
         details=details,
         userId=actor.user_id if actor else None,
+        userEmail=actor.user_email if actor else None,
+        userName=actor.user_name if actor else None,
         companyId=company_id,
         entityType=entity_type,
         entityId=entity_id,

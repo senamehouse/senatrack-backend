@@ -15,6 +15,8 @@ class ActivityLog(Base):
     action: Mapped[str] = mapped_column(String(255), nullable=False)
     details: Mapped[str] = mapped_column(Text, nullable=False)
     user_id: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
+    user_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    user_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     company_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     entity_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     entity_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -28,6 +30,8 @@ class ActivityLog(Base):
             "action": self.action,
             "details": self.details,
             "user_id": self.user_id,
+            "user_email": self.user_email,
+            "user_name": self.user_name,
             "company_id": self.company_id,
             "entity_type": self.entity_type,
             "entity_id": self.entity_id,

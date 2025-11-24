@@ -75,7 +75,7 @@ async def create_department(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    department = await svc.create_department(company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
+    department = await svc.create_department(company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
     return department
 
 
@@ -87,7 +87,7 @@ async def update_department(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    department = await svc.update_department(department_id=department_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
+    department = await svc.update_department(department_id=department_id, company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
     if not department:
         raise HTTPException(status_code=404, detail="Department not found")
     return department
@@ -100,7 +100,7 @@ async def delete_department(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.delete_department(department_id=department_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    ok = await svc.delete_department(department_id=department_id, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Department not found")
     return {"message": "Department deleted"}
@@ -146,7 +146,7 @@ async def create_employee(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    employee = await svc.create(company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
+    employee = await svc.create(company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
     return employee
 
 
@@ -158,7 +158,7 @@ async def update_employee(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    employee = await svc.update(employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
+    employee = await svc.update(employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
     return employee
@@ -171,7 +171,7 @@ async def delete_employee(
     current_user: User = Depends(get_current_user), 
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.delete(employee_id=employee_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    ok = await svc.delete(employee_id=employee_id, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Employee not found")
     return {"message": "Employee deleted"}
@@ -210,7 +210,7 @@ async def create_employee_leave(
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
-    leave_id = await svc.create_leave_request(employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
+    leave_id = await svc.create_leave_request(employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
     return {"message": "Leave request created", "leave_id": leave_id}
 
 
@@ -223,7 +223,7 @@ async def update_employee_leave(
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.update_leave_request(leave_id=leave_id, employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
+    ok = await svc.update_leave_request(leave_id=leave_id, employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Leave request not found")
     return {"message": "Leave request updated"}
@@ -237,7 +237,7 @@ async def delete_employee_leave(
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.delete_leave_request(leave_id=leave_id, employee_id=employee_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    ok = await svc.delete_leave_request(leave_id=leave_id, employee_id=employee_id, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Leave request not found")
     return {"message": "Leave request deleted"}
@@ -306,7 +306,7 @@ async def create_employee_payroll(
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
-    payroll_id = await svc.create_payroll(employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
+    payroll_id = await svc.create_payroll(employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
     return {"message": "Payroll created", "payroll_id": payroll_id}
 
 
@@ -319,7 +319,7 @@ async def update_employee_payroll(
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.update_payroll(payroll_id=payroll_id, employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor(current_user.id, None))
+    ok = await svc.update_payroll(payroll_id=payroll_id, employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Payroll not found")
     return {"message": "Payroll updated"}
@@ -333,7 +333,7 @@ async def delete_employee_payroll(
     current_user: User = Depends(get_current_user),
     company_id: str = Depends(get_company_id)
 ):
-    ok = await svc.delete_payroll(payroll_id=payroll_id, employee_id=employee_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    ok = await svc.delete_payroll(payroll_id=payroll_id, employee_id=employee_id, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Payroll not found")
     return {"message": "Payroll deleted"}

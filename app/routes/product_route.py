@@ -47,7 +47,7 @@ async def create_category(
     company_id: str = Depends(get_company_id)
 ):
     """Create a new product category"""
-    category_id = await product_service.create_category(category_data=category_data, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    category_id = await product_service.create_category(category_data=category_data, company_id=company_id, actor=ActivityActor.from_user(current_user))
     return {"message": "Category created successfully", "category_id": category_id}
 
 @router.put("/categories/{category_id}", response_model=dict)
@@ -59,7 +59,7 @@ async def update_category(
     company_id: str = Depends(get_company_id)
 ):
     """Update a product category"""
-    success = await product_service.update_category(category_id=category_id, category_data=category_data, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    success = await product_service.update_category(category_id=category_id, category_data=category_data, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not success:
         raise HTTPException(status_code=404, detail="Category not found")
     return {"message": "Category updated successfully"}
@@ -72,7 +72,7 @@ async def delete_category(
     company_id: str = Depends(get_company_id)
 ):
     """Delete a product category"""
-    success = await product_service.delete_category(category_id=category_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    success = await product_service.delete_category(category_id=category_id, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not success:
         raise HTTPException(status_code=404, detail="Category not found")
     return {"message": "Category deleted successfully"}
@@ -108,7 +108,7 @@ async def create_unit(
     company_id: str = Depends(get_company_id)
 ):
     """Create a new unit"""
-    unit_id = await product_service.create_unit(unit_data=unit_data, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    unit_id = await product_service.create_unit(unit_data=unit_data, company_id=company_id, actor=ActivityActor.from_user(current_user))
     return {"message": "Unit created successfully", "unit_id": unit_id}
 
 @router.put("/units/{unit_id}", response_model=dict)
@@ -120,7 +120,7 @@ async def update_unit(
     company_id: str = Depends(get_company_id)
 ):
     """Update a unit"""
-    success = await product_service.update_unit(unit_id=unit_id, unit_data=unit_data, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    success = await product_service.update_unit(unit_id=unit_id, unit_data=unit_data, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not success:
         raise HTTPException(status_code=404, detail="Unit not found")
     return {"message": "Unit updated successfully"}
@@ -133,7 +133,7 @@ async def delete_unit(
     company_id: str = Depends(get_company_id)
 ):
     """Delete a unit"""
-    success = await product_service.delete_unit(unit_id=unit_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    success = await product_service.delete_unit(unit_id=unit_id, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not success:
         raise HTTPException(status_code=404, detail="Unit not found")
     return {"message": "Unit deleted successfully"}
@@ -172,7 +172,7 @@ async def create_product(
     company_id: str = Depends(get_company_id)
 ):
     """Create a new product"""
-    product_id = await product_service.create_product(product_data=product_data, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    product_id = await product_service.create_product(product_data=product_data, company_id=company_id, actor=ActivityActor.from_user(current_user))
     return {"message": "Product created successfully", "product_id": product_id}
 
 @router.put("/{product_id}", response_model=dict)
@@ -184,7 +184,7 @@ async def update_product(
     company_id: str = Depends(get_company_id)
 ):
     """Update a product"""
-    success = await product_service.update_product(product_id=product_id, product_data=product_data, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    success = await product_service.update_product(product_id=product_id, product_data=product_data, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not success:
         raise HTTPException(status_code=404, detail="Product not found")
     return {"message": "Product updated successfully"}
@@ -197,7 +197,7 @@ async def delete_product(
     company_id: str = Depends(get_company_id)
 ):
     """Delete a product"""
-    success = await product_service.delete_product(product_id=product_id, company_id=company_id, actor=ActivityActor(current_user.id, None))
+    success = await product_service.delete_product(product_id=product_id, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not success:
         raise HTTPException(status_code=404, detail="Product not found")
     return {"message": "Product deleted successfully"}
