@@ -106,6 +106,14 @@ class CompanyService:
             session.add(owner_member)
             await session.commit()
 
+            # Ensure the creator is scoped to this new company
+            await self.user_service.update_user(
+                company.owner_id,
+                {
+                    "current_company_id": company.id,
+                },
+            )
+
             # Create default company role presets and assign the Owner preset
             try:
                 await self.create_company_default_presets(company.id)

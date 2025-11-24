@@ -80,3 +80,36 @@ def set_auth_cookies(
         if cookie_domain:
             cookie_kwargs["domain"] = cookie_domain
         response.set_cookie(**cookie_kwargs)
+
+
+def clear_auth_cookies(
+    response: Response,
+    request: Optional[Request] = None,
+) -> None:
+    """Clear authentication cookies (session, refreshToken, companyId)."""
+    is_production = False
+    cookie_domain = None
+
+    if request:
+        url = str(request.url)
+        is_production = url.startswith("https://")
+        host = request.headers.get("host", "")
+        if is_production and "senatrack.app" in host:
+            cookie_domain = ".senatrack.app"
+
+    samesite_value = "none" if is_production else "lax"
+    secure_value = is_production
+
+    for key in ["session", "refreshToken", "companyId"]:
+        cookie_kwargs = {
+            "key": key,
+            "value": "",
+            "max_age": 0,
+            "httponly": True,
+            "secure": secure_value,
+            "samesite": samesite_value,
+            "path": "/",
+        }
+        if cookie_domain:
+            cookie_kwargs["domain"] = cookie_domain
+        response.set_cookie(**cookie_kwargs)
