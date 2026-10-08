@@ -57,12 +57,12 @@ async def get_file(
     session: AsyncSession = Depends(get_async_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Images remain public for logos; stock documents require company access."""
+    """Public images remain available; every stock attachment requires company access."""
     rec = await svc.get_file(file_id)
     if not rec:
         raise HTTPException(status_code=404, detail="File not found")
-    is_document = not rec.content_type.startswith("image/")
-    if is_document:
+    requires_company_access = rec.entity_type == "stock_movement" or not rec.content_type.startswith("image/")
+    if requires_company_access:
         if not current_user:
             raise HTTPException(status_code=401, detail="Not authenticated")
         if not rec.company_id:
@@ -71,7 +71,7 @@ async def get_file(
     if rec.file_path and os.path.exists(rec.file_path):
         return FileResponse(rec.file_path, media_type=rec.content_type, filename=rec.original_filename)
     if rec.remote_url:
-        if is_document:
+        if requires_company_access:
             expected_host = f"{svc.upload_service.s3_bucket_name}.s3.{svc.upload_service.s3_region}.amazonaws.com"
             location = urlparse(rec.remote_url)
             if location.hostname != expected_host:

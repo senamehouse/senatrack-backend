@@ -6,6 +6,7 @@ import zipfile
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime
+from urllib.parse import unquote, urlparse
 import aiofiles
 
 from fastapi import HTTPException, UploadFile
@@ -397,8 +398,6 @@ class FileService:
         Sync online files to offline (download from S3 to local).
         Downloads S3 files to local storage when switching from online to offline mode.
         """
-        import aiohttp
-        
         session = get_db_session()
         rows = await session.execute(
             select(FileRecord).where(
@@ -411,33 +410,28 @@ class FileService:
         synced = 0
         errors: list[str] = []
         
-        async with aiohttp.ClientSession() as http_session:
-            for rec in items:
-                try:
-                    if not rec.remote_url:
-                        continue
-                    
-                    # Download from S3
-                    async with http_session.get(rec.remote_url) as response:
-                        if response.status != 200:
-                            errors.append(f"Failed to download {rec.filename}: HTTP {response.status}")
-                            continue
-                        content = await response.read()
-                    
-                    # Save to local
-                    storage_dir = self._entity_storage_dir(rec.entity_type, rec.entity_id, rec.field_name, rec.company_id)
-                    storage_dir.mkdir(parents=True, exist_ok=True)
-                    file_path = storage_dir / rec.filename
-                    with open(file_path, "wb") as f:
-                        f.write(content)
-                    
-                    # Update record
-                    rec.file_path = str(file_path)
-                    rec.storage_mode = "local"
-                    synced += 1
-                    
-                except Exception as e:
-                    errors.append(f"Error syncing {rec.filename}: {str(e)}")
+        expected_host = f"{self.upload_service.s3_bucket_name}.s3.{self.upload_service.s3_region}.amazonaws.com"
+        for rec in items:
+            try:
+                if not re.fullmatch(r"[A-Za-z0-9_.-]{1,255}", rec.filename) or rec.filename in {".", ".."}:
+                    raise ValueError("Invalid stored filename")
+                location = urlparse(rec.remote_url)
+                if location.scheme != "https" or location.hostname != expected_host or not location.path.strip("/"):
+                    raise ValueError("Invalid document storage location")
+                content = await self.upload_service.download_from_s3(unquote(location.path.lstrip("/")))
+
+                storage_dir = self._entity_storage_dir(rec.entity_type, rec.entity_id, rec.field_name, rec.company_id)
+                storage_dir.mkdir(parents=True, exist_ok=True)
+                file_path = storage_dir / rec.filename
+                with open(file_path, "wb") as f:
+                    f.write(content)
+
+                rec.file_path = str(file_path)
+                rec.storage_mode = "local"
+                synced += 1
+
+            except Exception as e:
+                errors.append(f"Error syncing {rec.filename}: {str(e)}")
         
         await session.commit()
         return {

@@ -322,6 +322,38 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(private_response.body, b"%PDF-1.7\n%%EOF")
                     self.assertIn("attachment", private_response.headers["content-disposition"])
 
+                    png_bytes = b"\x89PNG\r\n\x1a\nprivate image"
+                    image = await file_route_service.save_file(
+                        upload(png_bytes, "receipt.png"),
+                        "stock_movement", "temp-stock-image", "document_url", "company-a",
+                    )
+                    with self.assertRaises(HTTPException) as anonymous_image:
+                        await get_file_route(image["file_id"], session=session, current_user=None)
+                    self.assertEqual(anonymous_image.exception.status_code, 401)
+                    with patch("app.routes.file_route.ensure_company_access", new=AsyncMock(side_effect=HTTPException(status_code=403, detail="Denied"))):
+                        with self.assertRaises(HTTPException) as foreign_image:
+                            await get_file_route(image["file_id"], session=session, current_user=SimpleNamespace(id="other"))
+                    self.assertEqual(foreign_image.exception.status_code, 403)
+                    with patch("app.routes.file_route.ensure_company_access", new=AsyncMock()):
+                        local_image = await get_file_route(image["file_id"], session=session, current_user=SimpleNamespace(id="owner"))
+                    self.assertEqual(local_image.media_type, "image/png")
+                    image_record = await session.get(FileRecord, image["file_id"])
+                    image_record.file_path = None
+                    image_record.remote_url = f"https://{file_route_service.upload_service.s3_bucket_name}.s3.{file_route_service.upload_service.s3_region}.amazonaws.com/company-a/stock_movement/private.png"
+                    await session.commit()
+                    with patch("app.routes.file_route.ensure_company_access", new=AsyncMock()), patch.object(
+                        file_route_service.upload_service, "download_from_s3", new=AsyncMock(return_value=png_bytes)
+                    ) as image_download:
+                        remote_image = await get_file_route(image["file_id"], session=session, current_user=SimpleNamespace(id="owner"))
+                    image_download.assert_awaited_once_with("company-a/stock_movement/private.png")
+                    self.assertEqual(remote_image.body, png_bytes)
+                    self.assertIn("attachment", remote_image.headers["content-disposition"])
+
+                    logo = await file_route_service.save_file(
+                        upload(png_bytes, "logo.png"), "company", "company-a", "logo_url", "company-a",
+                    )
+                    self.assertEqual((await get_file_route(logo["file_id"], session=session, current_user=None)).media_type, "image/png")
+
                     with self.assertRaises(HTTPException):
                         await file_route_service.save_file(upload(b"%PDF-1.7", "logo.pdf"), "company", "company-a", "logo_url", "company-a")
                     with self.assertRaises(HTTPException):
@@ -349,6 +381,51 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
                     self.assertTrue(await StockMovementService().delete(movement_id, "company-a"))
                     self.assertFalse((await session.get(FileRecord, pdf["file_id"])).is_active)
                     self.assertIsNone(await file_route_service.get_file(pdf["file_id"]))
+
+    async def test_private_s3_files_sync_offline_without_public_http(self):
+        async with local_async_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        bucket_host = f"{file_route_service.upload_service.s3_bucket_name}.s3.{file_route_service.upload_service.s3_region}.amazonaws.com"
+        content = b"\x89PNG\r\n\x1a\nprivate image"
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            session.add_all([
+                FileRecord(
+                    id="sync-private", filename="receipt.png", original_filename="receipt.png",
+                    file_size=len(content), content_type="image/png", file_hash="private-hash",
+                    entity_type="stock_movement", entity_id="temp-stock-sync", field_name="document_url",
+                    company_id="company-a", storage_mode="s3", sync_status="synced",
+                    remote_url=f"https://{bucket_host}/company-a/stock_movement/private.png",
+                ),
+                FileRecord(
+                    id="sync-invalid", filename="invalid.png", original_filename="invalid.png",
+                    file_size=len(content), content_type="image/png", file_hash="invalid-hash",
+                    entity_type="stock_movement", entity_id="temp-stock-sync", field_name="document_url",
+                    company_id="company-a", storage_mode="s3", sync_status="synced",
+                    remote_url="https://example.com/not-our-bucket.png",
+                ),
+                FileRecord(
+                    id="sync-unsafe", filename="../escape.png", original_filename="escape.png",
+                    file_size=len(content), content_type="image/png", file_hash="unsafe-hash",
+                    entity_type="stock_movement", entity_id="temp-stock-sync", field_name="document_url",
+                    company_id="company-a", storage_mode="s3", sync_status="synced",
+                    remote_url=f"https://{bucket_host}/company-a/stock_movement/escape.png",
+                ),
+            ])
+            await session.commit()
+            with tempfile.TemporaryDirectory(prefix="senatrack-private-sync-") as temp_files:
+                with patch.object(file_route_service, "local_files_path", Path(temp_files)), patch.object(
+                    file_route_service.upload_service, "download_from_s3", new=AsyncMock(return_value=content)
+                ) as download:
+                    result = await file_route_service.sync_online_to_offline()
+                download.assert_awaited_once_with("company-a/stock_movement/private.png")
+                self.assertEqual(result["synced_count"], 1)
+                self.assertEqual(len(result["errors"]), 2)
+                saved = await session.get(FileRecord, "sync-private")
+                self.assertEqual(saved.storage_mode, "local")
+                self.assertEqual(Path(saved.file_path).read_bytes(), content)
+                self.assertIsNone((await session.get(FileRecord, "sync-invalid")).file_path)
+                self.assertIsNone((await session.get(FileRecord, "sync-unsafe")).file_path)
 
     async def test_role_migration_with_legacy_columns_is_idempotent(self):
         async with local_async_engine.begin() as connection:
