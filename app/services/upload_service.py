@@ -1,4 +1,5 @@
 import logging
+import os
 
 import aioboto3
 import boto3
@@ -15,8 +16,11 @@ logger = logging.getLogger(__name__)
 class UploadService:
     def __init__(self):
         self.s3_session = aioboto3.Session()
-        self.s3_bucket_name = settings.AWS_BUCKET_NAME
-        self.s3_region = settings.AWS_REGION
+        # Hosting environment values take precedence over legacy defaults.
+        self.s3_bucket_name = os.getenv("AWS_BUCKET_NAME") or settings.AWS_BUCKET_NAME
+        self.s3_region = os.getenv("AWS_REGION") or settings.AWS_REGION
+        self.s3_access_key = os.getenv("AWS_ACCESS_KEY_ID") or settings.AWS_ACCESS_KEY_ID
+        self.s3_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY") or settings.AWS_SECRET_ACCESS_KEY
         logger.info(
             f"Initialized UploadService with bucket: {self.s3_bucket_name} in region: {self.s3_region}"
         )
@@ -47,8 +51,8 @@ class UploadService:
 
             async with self.s3_session.client(
                 "s3",
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                aws_access_key_id=self.s3_access_key,
+                aws_secret_access_key=self.s3_secret_key,
                 region_name=self.s3_region,
                 endpoint_url=f"https://s3.{self.s3_region}.amazonaws.com",
             ) as s3:
@@ -96,8 +100,8 @@ class UploadService:
 
             s3 = boto3.client(
                 "s3",
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                aws_access_key_id=self.s3_access_key,
+                aws_secret_access_key=self.s3_secret_key,
                 region_name=self.s3_region,
                 endpoint_url=f"https://s3.{self.s3_region}.amazonaws.com",
             )
@@ -135,8 +139,8 @@ class UploadService:
         try:
             async with self.s3_session.client(
                 "s3",
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                aws_access_key_id=self.s3_access_key,
+                aws_secret_access_key=self.s3_secret_key,
                 region_name=self.s3_region,
                 endpoint_url=f"https://s3.{self.s3_region}.amazonaws.com",
             ) as s3:

@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from uuid import uuid4
 from types import SimpleNamespace
+from unittest.mock import patch
 from sqlalchemy import text
 from fastapi import HTTPException
 from fastapi import UploadFile
@@ -36,10 +37,12 @@ from app.services.purchase_order_service import PurchaseOrderService  # noqa: E4
 from app.services.supplier_service import SupplierService  # noqa: E402
 from app.services.company_service import CompanyService  # noqa: E402
 from app.services.file_service import FileService  # noqa: E402
+from app.services.upload_service import UploadService  # noqa: E402
 from app.services.activation_key_service import ActivationKeyService  # noqa: E402
 from app.schemas.activation_key_schema import ActivationKeyCreate, ActivationKeyUsageResponse  # noqa: E402
 from app.services.invitation_service import InvitationService  # noqa: E402
 from app.services.user_service import UserService  # noqa: E402
+from app.services.auth_service import AuthService  # noqa: E402
 from app.routes.user_route import update_user_as_admin, update_user_status, update_user_platform_role, update_user  # noqa: E402
 from app.schemas.user_schema import UserAdminUpdate, UserStatusUpdate, UserPlatformRoleUpdate, UserUpdate  # noqa: E402
 from app.schemas.invitation_schema import CompanyInvitationCreate, CompanyInvitation as CompanyInvitationSchema  # noqa: E402
@@ -206,6 +209,16 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
                 await company_service.set_company_member_role("test-company", "test-user", "test-role", "test-user")
             self.assertEqual(denied.exception.status_code, 400)
 
+            with patch.dict(os.environ, {
+                "AWS_BUCKET_NAME": "test-bucket", "AWS_REGION": "eu-west-1",
+                "AWS_ACCESS_KEY_ID": "test-access", "AWS_SECRET_ACCESS_KEY": "test-secret",
+            }):
+                storage = UploadService()
+                self.assertEqual(storage.s3_bucket_name, "test-bucket")
+                self.assertEqual(storage.s3_region, "eu-west-1")
+                self.assertEqual(storage.s3_access_key, "test-access")
+                self.assertEqual(storage.s3_secret_key, "test-secret")
+
             file_service = FileService()
             with tempfile.TemporaryDirectory(prefix="senatrack-file-test-") as temp_files:
                 file_service.local_files_path = Path(temp_files)
@@ -277,6 +290,13 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(HTTPException) as denied:
                 await update_user_platform_role("test-user", UserPlatformRoleUpdate(roleName="Regular User"), admin)
             self.assertEqual(denied.exception.status_code, 400)
+            await user_service.update_user("test-member", {"current_company_id": "other-company"})
+            auth_service = AuthService()
+            token = auth_service.create_access_token({"user_id": "test-member", "email": "newmember@example.com"})
+            current_member = await auth_service.get_current_user(token)
+            self.assertIsNone(current_member.current_company_id)
+            profile = await auth_service.get_user_profile(current_member, token)
+            self.assertEqual(profile.current_company_id, "test-company")
 
 if __name__ == "__main__":
     unittest.main()

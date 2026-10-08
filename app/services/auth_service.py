@@ -462,11 +462,16 @@ class AuthService:
         user_service = UserService()
         platform_roles = await user_service.get_user_roles(user.id)
         platform_permissions = await user_service.get_user_permissions(user.id)
+        allowed_company_ids = {company.id for company in companies}
+        current_company_id = user.current_company_id
+        if current_company_id not in allowed_company_ids and "admin.access" not in platform_permissions:
+            current_company_id = None
         
         # Convert user to dict and add companies, roles, and permissions
         user_dict = user.model_dump()
         user_dict['companies'] = [str(company.id) for company in companies]
-        user_dict['currentCompany'] = str(user.current_company_id) if user.current_company_id else None
+        user_dict['current_company_id'] = current_company_id
+        user_dict['currentCompany'] = str(current_company_id) if current_company_id else None
         user_dict['platformRoles'] = [role.name for role in platform_roles]
         user_dict['platformPermissions'] = platform_permissions
         
