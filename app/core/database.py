@@ -3,7 +3,10 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import text, inspect
 from typing import AsyncGenerator, Optional
 from contextvars import ContextVar
+import logging
 from app.core.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 # Async SQLAlchemy Base
@@ -255,6 +258,32 @@ async def _apply_non_destructive_alters(conn, dialect: str):
                 WHERE owner.id = {quoted_child}.{foreign_key} AND owner.company_id IS NOT NULL
             )
         """))
+
+    # New databases receive this constraint through the model. Add it to
+    # existing databases only when historical references are already unique;
+    # a duplicate must not prevent the entire application from starting.
+    if "purchase_orders" in existing_tables:
+        constraints = await conn.run_sync(
+            lambda sync_conn: inspect(sync_conn).get_unique_constraints("purchase_orders")
+        )
+        has_constraint = any(
+            set(constraint.get("column_names") or ()) == {"company_id", "order_number"}
+            for constraint in constraints
+        )
+        if not has_constraint:
+            duplicate = await conn.scalar(text("""
+                SELECT 1 FROM purchase_orders
+                WHERE company_id IS NOT NULL
+                GROUP BY company_id, order_number HAVING COUNT(*) > 1
+                LIMIT 1
+            """))
+            if duplicate:
+                logger.warning("Historical purchase order numbers contain duplicates; skipping unique index")
+            else:
+                await conn.execute(text("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_orders_company_order_number
+                    ON purchase_orders (company_id, order_number)
+                """))
 
 # Database configuration and setup only
 # All database operations are handled by services

@@ -10,7 +10,7 @@ from datetime import datetime
 from uuid import uuid4
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-from sqlalchemy import select, text
+from sqlalchemy import select, text, inspect
 from fastapi import HTTPException
 from fastapi import UploadFile
 from starlette.requests import Request
@@ -83,6 +83,99 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
         await local_async_engine.dispose()
         _test_db.unlink(missing_ok=True)
 
+    async def test_purchase_order_numbers_are_unique_per_company(self):
+        async with local_async_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+            constraints = await connection.run_sync(
+                lambda sync_conn: inspect(sync_conn).get_unique_constraints("purchase_orders")
+            )
+            self.assertTrue(any(
+                set(constraint.get("column_names") or ()) == {"company_id", "order_number"}
+                for constraint in constraints
+            ))
+
+        def payload(number=None):
+            return PurchaseOrderCreate.model_validate({
+                **({"orderNumber": number} if number is not None else {}),
+                "supplierId": "supplier-1", "supplierName": "Fournisseur test",
+                "orderDate": "2026-10-08", "status": "draft",
+                "items": [{"id": "line-1", "productId": "p1", "productName": "Produit",
+                           "quantity": 1, "buyPrice": 25, "totalPrice": 25, "unit": "unité"}],
+                "subtotal": 25, "totalAmount": 25,
+            })
+
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            service = PurchaseOrderService()
+            first_id = await service.create("tenant-a", payload())
+            first = await service.get_by_id(first_id, "tenant-a")
+            with patch.object(service, "generate_order_number", new=AsyncMock(
+                side_effect=[first.order_number, "BC-2099-9999"],
+            )):
+                second_id = await service.create("tenant-a", payload())
+            self.assertEqual((await service.get_by_id(second_id, "tenant-a")).order_number, "BC-2099-9999")
+
+            # Simulate another worker committing after the pre-insert lookup:
+            # the database constraint catches the collision and creation retries.
+            original_scalar = session.scalar
+            scalar_calls = 0
+
+            async def stale_first_lookup(*args, **kwargs):
+                nonlocal scalar_calls
+                scalar_calls += 1
+                if scalar_calls == 1:
+                    return None
+                return await original_scalar(*args, **kwargs)
+
+            with patch.object(service, "generate_order_number", new=AsyncMock(
+                side_effect=[first.order_number, "BC-2099-9998"],
+            )), patch.object(session, "scalar", new=stale_first_lookup):
+                third_id = await service.create("tenant-a", payload())
+            self.assertEqual((await service.get_by_id(third_id, "tenant-a")).order_number, "BC-2099-9998")
+
+            with self.assertRaises(HTTPException) as duplicate_create:
+                await service.create("tenant-a", payload(first.order_number))
+            self.assertEqual(duplicate_create.exception.status_code, 409)
+            with self.assertRaises(HTTPException) as duplicate_update:
+                await service.update(second_id, "tenant-a", PurchaseOrderUpdate(orderNumber=first.order_number))
+            self.assertEqual(duplicate_update.exception.status_code, 409)
+            with self.assertRaises(HTTPException) as empty_update:
+                await service.update(second_id, "tenant-a", PurchaseOrderUpdate(orderNumber=" "))
+            self.assertEqual(empty_update.exception.status_code, 422)
+            other_id = await service.create("tenant-b", payload(first.order_number))
+            self.assertEqual((await service.get_by_id(other_id, "tenant-b")).order_number, first.order_number)
+
+    async def test_purchase_order_migration_preserves_legacy_duplicates(self):
+        async with local_async_engine.begin() as connection:
+            await connection.execute(text("""CREATE TABLE purchase_orders (
+                id VARCHAR(20) PRIMARY KEY, company_id VARCHAR(64),
+                order_number VARCHAR(100) NOT NULL, supplier_id VARCHAR(64),
+                status VARCHAR(20) NOT NULL, total_amount FLOAT NOT NULL,
+                created_at DATETIME, updated_at DATETIME
+            )"""))
+            await connection.run_sync(Base.metadata.create_all)
+            await connection.execute(text("""INSERT INTO purchase_orders
+                (id, company_id, order_number, status, total_amount) VALUES
+                ('old-1', 'tenant-a', 'BC-2026-0001', 'draft', 25),
+                ('old-2', 'tenant-a', 'BC-2026-0001', 'draft', 50)
+            """))
+            await _apply_non_destructive_alters(connection, dialect="sqlite")
+            await _apply_non_destructive_alters(connection, dialect="sqlite")
+            count = await connection.scalar(text("SELECT COUNT(*) FROM purchase_orders WHERE company_id = 'tenant-a'"))
+            self.assertEqual(count, 2)
+
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            with self.assertRaises(HTTPException) as duplicate:
+                await PurchaseOrderService().create("tenant-a", PurchaseOrderCreate.model_validate({
+                    "orderNumber": "BC-2026-0001", "supplierId": "supplier-1",
+                    "supplierName": "Fournisseur test", "orderDate": "2026-10-08",
+                    "items": [{"id": "line-1", "productId": "p1", "productName": "Produit",
+                               "quantity": 1, "buyPrice": 25, "totalPrice": 25}],
+                    "subtotal": 25, "totalAmount": 25,
+                }))
+            self.assertEqual(duplicate.exception.status_code, 409)
+
     async def test_legacy_child_tables_gain_company_scope_without_reassigning_records(self):
         async with local_async_engine.begin() as connection:
             await connection.execute(text("""CREATE TABLE employee_payrolls (
@@ -130,6 +223,13 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             with patch.object(settings, "COMPANY_ID", "wrong-tenant"):
                 await _apply_non_destructive_alters(connection, dialect="sqlite")
                 await _apply_non_destructive_alters(connection, dialect="sqlite")
+            indexes = await connection.run_sync(
+                lambda sync_conn: inspect(sync_conn).get_indexes("purchase_orders")
+            )
+            self.assertTrue(any(
+                index.get("unique") and set(index.get("column_names") or ()) == {"company_id", "order_number"}
+                for index in indexes
+            ))
             for table_name, record_id in (
                 ("employee_payrolls", "legacy-payroll"),
                 ("employee_leave_requests", "legacy-leave"),

@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, DateTime, Float, JSON
+from sqlalchemy import String, DateTime, Float, JSON, UniqueConstraint
 from sqlalchemy.sql import func
 from app.core.database import Base
 from app.utils.id_generator import generate_id
@@ -9,6 +9,7 @@ from app.utils.id_generator import generate_id
 
 class PurchaseOrder(Base):
     __tablename__ = "purchase_orders"
+    __table_args__ = (UniqueConstraint("company_id", "order_number", name="uq_purchase_orders_company_order_number"),)
 
     id: Mapped[str] = mapped_column(String(20), primary_key=True, index=True, default=generate_id)
     company_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
