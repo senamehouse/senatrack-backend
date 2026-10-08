@@ -35,7 +35,7 @@ async def get_client(
     return client
 
 
-@router.post("/", response_model=dict)
+@router.post("/", response_model=Client)
 async def create_client(
     payload: ClientCreate,
     session: AsyncSession = Depends(get_async_db),
@@ -43,10 +43,10 @@ async def create_client(
     company_id: str = Depends(get_company_id)
 ):
     client_id = await service.create_client(company_id=company_id, client_data=payload, actor=ActivityActor.from_user(current_user))
-    return {"message": "Client created", "client_id": client_id}
+    return await service.get_client_by_id(client_id, company_id)
 
 
-@router.put("/{client_id}", response_model=dict)
+@router.put("/{client_id}", response_model=Client)
 async def update_client(
     client_id: str,
     payload: ClientUpdate,
@@ -57,7 +57,7 @@ async def update_client(
     ok = await service.update_client(client_id=client_id, company_id=company_id, client_data=payload, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Client not found")
-    return {"message": "Client updated"}
+    return await service.get_client_by_id(client_id, company_id, include_inactive=True)
 
 
 @router.delete("/{client_id}", response_model=dict)

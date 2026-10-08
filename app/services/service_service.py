@@ -25,16 +25,13 @@ class ServiceService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving services: {str(e)}")
 
-    async def get_service_by_id(self, service_id: str, company_id: str) -> Optional[ServiceSchema]:
+    async def get_service_by_id(self, service_id: str, company_id: str, include_inactive: bool = False) -> Optional[ServiceSchema]:
         try:
             session = get_db_session()
-            result = await session.execute(
-                select(ServiceModel).where(
-                    ServiceModel.id == service_id,
-                    ServiceModel.company_id == company_id,
-                    ServiceModel.is_active == True,
-                )
-            )
+            query = select(ServiceModel).where(ServiceModel.id == service_id, ServiceModel.company_id == company_id)
+            if not include_inactive:
+                query = query.where(ServiceModel.is_active == True)
+            result = await session.execute(query)
             service = result.scalar_one_or_none()
             return ServiceSchema.model_validate(service.to_dict()) if service else None
         except Exception as e:

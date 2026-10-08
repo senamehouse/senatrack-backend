@@ -39,7 +39,7 @@ async def get_category(
         raise HTTPException(status_code=404, detail="Category not found")
     return category
 
-@router.post("/categories", response_model=dict)
+@router.post("/categories", response_model=ProductCategory)
 async def create_category(
     category_data: ProductCategoryCreate,
     session: AsyncSession = Depends(get_async_db),
@@ -48,9 +48,9 @@ async def create_category(
 ):
     """Create a new product category"""
     category_id = await product_service.create_category(category_data=category_data, company_id=company_id, actor=ActivityActor.from_user(current_user))
-    return {"message": "Category created successfully", "category_id": category_id}
+    return await product_service.get_category_by_id(category_id, company_id)
 
-@router.put("/categories/{category_id}", response_model=dict)
+@router.put("/categories/{category_id}", response_model=ProductCategory)
 async def update_category(
     category_id: str,
     category_data: ProductCategoryUpdate,
@@ -62,7 +62,7 @@ async def update_category(
     success = await product_service.update_category(category_id=category_id, category_data=category_data, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not success:
         raise HTTPException(status_code=404, detail="Category not found")
-    return {"message": "Category updated successfully"}
+    return await product_service.get_category_by_id(category_id, company_id, include_inactive=True)
 
 @router.delete("/categories/{category_id}", response_model=dict)
 async def delete_category(
@@ -100,7 +100,7 @@ async def get_unit(
         raise HTTPException(status_code=404, detail="Unit not found")
     return unit
 
-@router.post("/units", response_model=dict)
+@router.post("/units", response_model=Unit)
 async def create_unit(
     unit_data: UnitCreate,
     session: AsyncSession = Depends(get_async_db),
@@ -109,9 +109,9 @@ async def create_unit(
 ):
     """Create a new unit"""
     unit_id = await product_service.create_unit(unit_data=unit_data, company_id=company_id, actor=ActivityActor.from_user(current_user))
-    return {"message": "Unit created successfully", "unit_id": unit_id}
+    return await product_service.get_unit_by_id(unit_id, company_id)
 
-@router.put("/units/{unit_id}", response_model=dict)
+@router.put("/units/{unit_id}", response_model=Unit)
 async def update_unit(
     unit_id: str,
     unit_data: UnitUpdate,
@@ -123,7 +123,7 @@ async def update_unit(
     success = await product_service.update_unit(unit_id=unit_id, unit_data=unit_data, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not success:
         raise HTTPException(status_code=404, detail="Unit not found")
-    return {"message": "Unit updated successfully"}
+    return await product_service.get_unit_by_id(unit_id, company_id, include_inactive=True)
 
 @router.delete("/units/{unit_id}", response_model=dict)
 async def delete_unit(
@@ -164,7 +164,7 @@ async def get_product(
         raise HTTPException(status_code=404, detail="Product not found")
     return product
 
-@router.post("/", response_model=dict)
+@router.post("/", response_model=Product)
 async def create_product(
     product_data: ProductCreate,
     session: AsyncSession = Depends(get_async_db),
@@ -173,9 +173,9 @@ async def create_product(
 ):
     """Create a new product"""
     product_id = await product_service.create_product(product_data=product_data, company_id=company_id, actor=ActivityActor.from_user(current_user))
-    return {"message": "Product created successfully", "product_id": product_id}
+    return await product_service.get_product_by_id(product_id, company_id)
 
-@router.put("/{product_id}", response_model=dict)
+@router.put("/{product_id}", response_model=Product)
 async def update_product(
     product_id: str,
     product_data: ProductUpdate,
@@ -187,7 +187,7 @@ async def update_product(
     success = await product_service.update_product(product_id=product_id, product_data=product_data, company_id=company_id, actor=ActivityActor.from_user(current_user))
     if not success:
         raise HTTPException(status_code=404, detail="Product not found")
-    return {"message": "Product updated successfully"}
+    return await product_service.get_product_by_id(product_id, company_id, include_inactive=True)
 
 @router.delete("/{product_id}", response_model=dict)
 async def delete_product(

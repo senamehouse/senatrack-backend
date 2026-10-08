@@ -56,6 +56,14 @@ from app.services.stock_movement_service import StockMovementService  # noqa: E4
 from app.services.sales_service import SalesService  # noqa: E402
 from app.schemas.stock_movement_schema import StockMovementCreate, StockMovementItemCreate, StockMovementUpdate, MovementType  # noqa: E402
 from app.schemas.sales_schema import SaleCreate, SaleItemCreate, SaleUpdate, PaymentStatus  # noqa: E402
+from app.schemas.product_schema import ProductCreate, ProductUpdate, ProductCategoryCreate, ProductCategoryUpdate, UnitCreate, UnitUpdate  # noqa: E402
+from app.schemas.client_schema import ClientCreate, ClientUpdate  # noqa: E402
+from app.schemas.service_schema import ServiceCreate, ServiceUpdate  # noqa: E402
+from app.routes.product_route import create_category, update_category, create_unit, update_unit, create_product, update_product  # noqa: E402
+from app.routes.client_route import create_client, update_client  # noqa: E402
+from app.routes.service_route import create_service, update_service  # noqa: E402
+from app.routes.sales_route import create_sale, update_sale  # noqa: E402
+from app.core.dependencies import require_admin_access  # noqa: E402
 from app.routes.stock_movement_route import create_movement  # noqa: E402
 from app.routes.file_route import get_file as get_file_route, svc as file_route_service  # noqa: E402
 from app.routes.user_route import update_user_as_admin, update_user_status, update_user_platform_role, update_user  # noqa: E402
@@ -69,6 +77,62 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
         set_db_session(None)
         await local_async_engine.dispose()
         _test_db.unlink(missing_ok=True)
+
+    async def test_database_info_requires_platform_admin(self):
+        from app.main import app
+        route = next(route for route in app.routes if getattr(route, "path", None) == "/database-info")
+        self.assertIn(require_admin_access, [dependency.call for dependency in route.dependant.dependencies])
+
+    async def test_catalog_mutations_return_entities_for_frontend_cache(self):
+        async with local_async_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            user = SimpleNamespace(id="catalog-user", email="catalog@example.com", name="Tester")
+            category = await create_category(ProductCategoryCreate(name="General"), session=session, current_user=user, company_id="company-a")
+            self.assertEqual(category.name, "General")
+            unit = await create_unit(UnitCreate(name="Piece", abbreviation="pc"), session=session, current_user=user, company_id="company-a")
+            self.assertEqual(unit.abbreviation, "pc")
+            product = await create_product(ProductCreate(
+                name="Item", buy_price=25, sell_price=50, stock=3,
+                category_id=category.id, unit_id=unit.id,
+            ), session=session, current_user=user, company_id="company-a")
+            self.assertEqual(product.stock, 3)
+            self.assertEqual(product.buy_price, 25)
+            session.add(ProductCategory(id="foreign-category", company_id="company-b", name="Other"))
+            await session.commit()
+            with self.assertRaises(HTTPException) as cross_company:
+                await create_product(ProductCreate(
+                    name="Foreign", buy_price=25, sell_price=50, stock=1,
+                    category_id="foreign-category", unit_id=unit.id,
+                ), session=session, current_user=user, company_id="company-a")
+            self.assertEqual(cross_company.exception.status_code, 400)
+            with self.assertRaises(HTTPException) as cross_company_update:
+                await update_product(product.id, ProductUpdate(category_id="foreign-category"), session=session, current_user=user, company_id="company-a")
+            self.assertEqual(cross_company_update.exception.status_code, 400)
+            with patch.object(session, "commit", new=AsyncMock(side_effect=RuntimeError("sync write failed"))):
+                with self.assertRaises(HTTPException) as failed_commit:
+                    await create_product(ProductCreate(
+                        name="Not persisted", buy_price=25, sell_price=50, stock=1,
+                        category_id=category.id, unit_id=unit.id,
+                    ), session=session, current_user=user, company_id="company-a")
+            self.assertEqual(failed_commit.exception.status_code, 500)
+            self.assertIsNone(await session.scalar(select(Product).where(Product.name == "Not persisted")))
+            client = await create_client(ClientCreate(name="Buyer"), session=session, current_user=user, company_id="company-a")
+            self.assertEqual(client.company_id, "company-a")
+            service = await create_service(ServiceCreate(name="Delivery", unit="trip", price=50), session=session, current_user=user, company_id="company-a")
+            self.assertEqual(service.company_id, "company-a")
+
+            updated_product = await update_product(product.id, ProductUpdate(sell_price=75), session=session, current_user=user, company_id="company-a")
+            self.assertEqual(updated_product.sell_price, 75)
+            updated_client = await update_client(client.id, ClientUpdate(name="Buyer 2"), session=session, current_user=user, company_id="company-a")
+            self.assertEqual(updated_client.name, "Buyer 2")
+            updated_service = await update_service(service.id, ServiceUpdate(price=75), session=session, current_user=user, company_id="company-a")
+            self.assertEqual(updated_service.price, 75)
+            updated_category = await update_category(category.id, ProductCategoryUpdate(is_active=False), session=session, current_user=user, company_id="company-a")
+            self.assertFalse(updated_category.is_active)
+            updated_unit = await update_unit(unit.id, UnitUpdate(is_active=False), session=session, current_user=user, company_id="company-a")
+            self.assertFalse(updated_unit.is_active)
 
     async def test_stock_movement_round_trip_and_reversal(self):
         async with local_async_engine.begin() as connection:
@@ -146,7 +210,10 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
                 date=datetime.utcnow(), subtotal=100, total=100,
                 payment_status=PaymentStatus.PENDING, items=[item],
             )
-            sale_id = await service.create("company-a", payload)
+            created_sale = await create_sale(payload, session=session, current_user=SimpleNamespace(id="tester", email="tester@example.com", name="Tester"), company_id="company-a")
+            sale_id = created_sale.id
+            self.assertEqual(created_sale.company_id, "company-a")
+            self.assertEqual(created_sale.items[0].item_id, "sale-product")
             self.assertEqual((await session.get(Product, "sale-product")).stock, 1)
             movements = await StockMovementService().get_movements_by_sale_id(sale_id, "company-a")
             self.assertEqual(len(movements), 1)
@@ -155,7 +222,8 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
                 await StockMovementService().delete(movements[0].id, "company-a")
             self.assertEqual(linked_movement.exception.status_code, 409)
 
-            self.assertTrue(await service.update(sale_id, "company-a", SaleUpdate(reference="VNT-TEST-123")))
+            updated_sale = await update_sale(sale_id, SaleUpdate(reference="VNT-TEST-123"), session=session, current_user=SimpleNamespace(id="tester", email="tester@example.com", name="Tester"), company_id="company-a")
+            self.assertEqual(updated_sale.reference, "VNT-TEST-123")
             self.assertEqual(len(await StockMovementService().get_movements_by_sale_id(sale_id, "company-a")), 1)
 
             self.assertTrue(await service.delete(sale_id, "company-a"))

@@ -46,7 +46,7 @@ async def get_sale(
     return sale
 
 
-@router.post("/", response_model=dict)
+@router.post("/", response_model=SaleResponse)
 async def create_sale(
     payload: SaleCreate,
     session: AsyncSession = Depends(get_async_db),
@@ -54,10 +54,10 @@ async def create_sale(
     company_id: str = Depends(get_company_id)
 ):
     sale_id = await svc.create(company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
-    return {"message": "Sale created", "sale_id": sale_id}
+    return await svc.get_by_id(sale_id, company_id)
 
 
-@router.put("/{sale_id}", response_model=dict)
+@router.put("/{sale_id}", response_model=SaleResponse)
 async def update_sale(
     sale_id: str,
     payload: SaleUpdate,
@@ -68,7 +68,7 @@ async def update_sale(
     ok = await svc.update(sale_id=sale_id, company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Sale not found")
-    return {"message": "Sale updated"}
+    return await svc.get_by_id(sale_id, company_id)
 
 
 @router.delete("/{sale_id}", response_model=dict)

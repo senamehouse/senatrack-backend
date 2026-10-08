@@ -1,5 +1,5 @@
 # Create a FastAPI app instance
-from fastapi import FastAPI, Request, HTTPException, status
+from fastapi import FastAPI, Request, HTTPException, status, Depends
 from fastapi import APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -29,6 +29,8 @@ from app.routes.stats_route import router as stats_router
 from app.routes.tva_rate_route import router as tva_rate_router
 
 from app.core.database import init_database, get_database_info, get_sessionmaker, set_db_session
+from app.core.dependencies import require_admin_access
+from app.schemas.user_schema import User
 from app.services.migration_service import MigrationService
 # Import all models to ensure they're registered with Base.metadata
 import app.models  # This ensures all models are loaded and registered with Base.metadata
@@ -84,8 +86,8 @@ async def health():
     return {"status": "ok"}
 
 @app.get("/database-info")
-async def get_database_info_endpoint():
-    """Get information about current database configuration"""
+async def get_database_info_endpoint(current_user: User = Depends(require_admin_access)):
+    """Only platform administrators may inspect database configuration."""
     return get_database_info()
 
 # Include all routers directly without /api prefix

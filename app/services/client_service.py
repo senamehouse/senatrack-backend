@@ -25,16 +25,13 @@ class ClientService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving clients: {str(e)}")
 
-    async def get_client_by_id(self, client_id: str, company_id: str) -> Optional[ClientSchema]:
+    async def get_client_by_id(self, client_id: str, company_id: str, include_inactive: bool = False) -> Optional[ClientSchema]:
         try:
             session = get_db_session()
-            result = await session.execute(
-                select(ClientModel).where(
-                    ClientModel.id == client_id,
-                    ClientModel.company_id == company_id,
-                    ClientModel.is_active == True,
-                )
-            )
+            query = select(ClientModel).where(ClientModel.id == client_id, ClientModel.company_id == company_id)
+            if not include_inactive:
+                query = query.where(ClientModel.is_active == True)
+            result = await session.execute(query)
             client = result.scalar_one_or_none()
             return ClientSchema(**client.to_dict()) if client else None
         except Exception as e:

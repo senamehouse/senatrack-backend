@@ -17,6 +17,26 @@ from app.utils.activity_logger import audit, ActivityActor
 
 class ProductService:
     """Service for product-related database operations"""
+
+    async def _validate_product_relations(self, session, company_id: str | None, category_id: str | None, unit_id: str | None) -> None:
+        if not company_id:
+            raise HTTPException(status_code=400, detail="Company is required for a product")
+        if category_id is not None:
+            category = await session.scalar(select(ProductCategoryModel.id).where(
+                ProductCategoryModel.id == category_id,
+                ProductCategoryModel.company_id == company_id,
+                ProductCategoryModel.is_active == True,
+            ))
+            if category is None:
+                raise HTTPException(status_code=400, detail="Category does not belong to this company")
+        if unit_id is not None:
+            unit = await session.scalar(select(UnitModel.id).where(
+                UnitModel.id == unit_id,
+                UnitModel.company_id == company_id,
+                UnitModel.is_active == True,
+            ))
+            if unit is None:
+                raise HTTPException(status_code=400, detail="Unit does not belong to this company")
     
     # Product Category methods
     async def get_all_categories(self, company_id: str | None = None) -> List[ProductCategorySchema]:
@@ -32,14 +52,13 @@ class ProductService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving categories: {str(e)}")
     
-    async def get_category_by_id(self, category_id: str, company_id: str | None = None) -> Optional[ProductCategorySchema]:
+    async def get_category_by_id(self, category_id: str, company_id: str | None = None, include_inactive: bool = False) -> Optional[ProductCategorySchema]:
         """Get a product category by ID"""
         try:
             session = get_db_session()
-            query = select(ProductCategoryModel).where(
-                ProductCategoryModel.id == category_id,
-                ProductCategoryModel.is_active == True
-            )
+            query = select(ProductCategoryModel).where(ProductCategoryModel.id == category_id)
+            if not include_inactive:
+                query = query.where(ProductCategoryModel.is_active == True)
             if company_id:
                 query = query.where(ProductCategoryModel.company_id == company_id)
             result = await session.execute(query)
@@ -65,8 +84,7 @@ class ProductService:
                 company_id=company_id
             )
             session.add(category)
-            await session.commit()
-            await session.refresh(category)
+            await session.flush()
             
             # Log sync operation
             sync_log = SyncLog(
@@ -80,6 +98,7 @@ class ProductService:
                 
             return category.id
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error creating category: {str(e)}")
     
     @audit(
@@ -111,9 +130,7 @@ class ProductService:
                 category.is_active = category_data.is_active
             
             category.updated_at = datetime.now()
-            await session.commit()
-            
-            # Log sync operation
+            # Commit the edit together with its sync event.
             sync_log = SyncLog(
                 operation='UPDATE',
                 table_name='product_categories',
@@ -125,6 +142,7 @@ class ProductService:
             
             return True
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error updating category: {str(e)}")
     
     @audit(
@@ -149,9 +167,7 @@ class ProductService:
             # Soft delete
             category.is_active = False
             category.updated_at = datetime.now()
-            await session.commit()
-            
-            # Log sync operation
+            # Commit the soft delete together with its sync event.
             sync_log = SyncLog(
                 operation='DELETE',
                 table_name='product_categories',
@@ -163,6 +179,7 @@ class ProductService:
             
             return True
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error deleting category: {str(e)}")
     
     # Unit methods
@@ -179,11 +196,13 @@ class ProductService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving units: {str(e)}")
     
-    async def get_unit_by_id(self, unit_id: str, company_id: str | None = None) -> Optional[UnitSchema]:
+    async def get_unit_by_id(self, unit_id: str, company_id: str | None = None, include_inactive: bool = False) -> Optional[UnitSchema]:
         """Get a unit by ID"""
         try:
             session = get_db_session()
-            query = select(UnitModel).where(UnitModel.id == unit_id, UnitModel.is_active == True)
+            query = select(UnitModel).where(UnitModel.id == unit_id)
+            if not include_inactive:
+                query = query.where(UnitModel.is_active == True)
             if company_id:
                 query = query.where(UnitModel.company_id == company_id)
             result = await session.execute(query)
@@ -210,8 +229,7 @@ class ProductService:
                 company_id=company_id
             )
             session.add(unit)
-            await session.commit()
-            await session.refresh(unit)
+            await session.flush()
             
             # Log sync operation
             sync_log = SyncLog(
@@ -225,6 +243,7 @@ class ProductService:
             
             return unit.id
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error creating unit: {str(e)}")
     
     @audit(
@@ -258,9 +277,7 @@ class ProductService:
                 unit.is_active = unit_data.is_active
             
             unit.updated_at = datetime.now()
-            await session.commit()
-            
-            # Log sync operation
+            # Commit the edit together with its sync event.
             sync_log = SyncLog(
                 operation='UPDATE',
                 table_name='units',
@@ -272,6 +289,7 @@ class ProductService:
             
             return True
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error updating unit: {str(e)}")
     
     @audit(
@@ -296,9 +314,7 @@ class ProductService:
             # Soft delete
             unit.is_active = False
             unit.updated_at = datetime.now()
-            await session.commit()
-            
-            # Log sync operation
+            # Commit the soft delete together with its sync event.
             sync_log = SyncLog(
                 operation='DELETE',
                 table_name='units',
@@ -310,6 +326,7 @@ class ProductService:
             
             return True
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error deleting unit: {str(e)}")
     
     # Product methods
@@ -327,11 +344,13 @@ class ProductService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving products: {str(e)}")
     
-    async def get_product_by_id(self, product_id: str, company_id: str | None = None) -> Optional[ProductSchema]:
+    async def get_product_by_id(self, product_id: str, company_id: str | None = None, include_inactive: bool = False) -> Optional[ProductSchema]:
         """Get a product by ID"""
         try:
             session = get_db_session()
-            query = select(ProductModel).where(ProductModel.id == product_id, ProductModel.is_active == True)
+            query = select(ProductModel).where(ProductModel.id == product_id)
+            if not include_inactive:
+                query = query.where(ProductModel.is_active == True)
             if company_id:
                 query = query.where(ProductModel.company_id == company_id)
             result = await session.execute(query)
@@ -369,6 +388,7 @@ class ProductService:
         """Create a new product and return the ID"""
         try:
             session = get_db_session()
+            await self._validate_product_relations(session, company_id, product_data.category_id, product_data.unit_id)
             product = ProductModel(
                 name=product_data.name,
                 description=product_data.description,
@@ -382,8 +402,7 @@ class ProductService:
                 company_id=company_id
             )
             session.add(product)
-            await session.commit()
-            await session.refresh(product)
+            await session.flush()
             
             # Log sync operation
             sync_log = SyncLog(
@@ -396,7 +415,11 @@ class ProductService:
             await session.commit()
             
             return product.id
+        except HTTPException:
+            await session.rollback()
+            raise
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error creating product: {str(e)}")
     
     @audit(
@@ -418,6 +441,7 @@ class ProductService:
             
             if not product:
                 return False
+            await self._validate_product_relations(session, company_id, product_data.category_id, product_data.unit_id)
             
             # Update fields
             if product_data.name is not None:
@@ -442,9 +466,7 @@ class ProductService:
                 product.is_active = product_data.is_active
             
             product.updated_at = datetime.now()
-            await session.commit()
-            
-            # Log sync operation
+            # Keep the product edit and its sync event in one transaction.
             sync_log = SyncLog(
                 operation='UPDATE',
                 table_name='products',
@@ -455,7 +477,11 @@ class ProductService:
             await session.commit()
             
             return True
+        except HTTPException:
+            await session.rollback()
+            raise
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error updating product: {str(e)}")
     
     @audit(
@@ -480,9 +506,7 @@ class ProductService:
             # Soft delete
             product.is_active = False
             product.updated_at = datetime.now()
-            await session.commit()
-            
-            # Log sync operation
+            # Commit the soft delete together with its sync event.
             sync_log = SyncLog(
                 operation='DELETE',
                 table_name='products',
@@ -494,6 +518,7 @@ class ProductService:
             
             return True
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error deleting product: {str(e)}")
     
     # Statistics methods

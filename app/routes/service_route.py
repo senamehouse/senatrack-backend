@@ -35,7 +35,7 @@ async def get_service(
     return service
 
 
-@router.post("/", response_model=dict)
+@router.post("/", response_model=ServiceSchema)
 async def create_service(
     payload: ServiceCreate,
     session: AsyncSession = Depends(get_async_db),
@@ -43,10 +43,10 @@ async def create_service(
     company_id: str = Depends(get_company_id)
 ):
     service_id = await svc.create_service(company_id=company_id, service_data=payload, actor=ActivityActor.from_user(current_user))
-    return {"message": "Service created", "service_id": service_id}
+    return await svc.get_service_by_id(service_id, company_id)
 
 
-@router.put("/{service_id}", response_model=dict)
+@router.put("/{service_id}", response_model=ServiceSchema)
 async def update_service(
     service_id: str,
     payload: ServiceUpdate,
@@ -57,7 +57,7 @@ async def update_service(
     ok = await svc.update_service(service_id=service_id, company_id=company_id, service_data=payload, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Service not found")
-    return {"message": "Service updated"}
+    return await svc.get_service_by_id(service_id, company_id, include_inactive=True)
 
 
 @router.delete("/{service_id}", response_model=dict)
