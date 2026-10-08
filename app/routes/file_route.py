@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 import os
+from urllib.parse import urlparse, unquote, quote
 
 from app.services.file_service import FileService
-from app.core.dependencies import get_current_user, get_company_id, ensure_company_access, require_admin_access
+from app.core.dependencies import get_current_user, get_current_user_optional, get_company_id, ensure_company_access, require_admin_access
 from app.core.database import get_async_db
 from app.schemas.user_schema import User
 
@@ -53,16 +54,32 @@ async def upload_file(
 @router.head("/{file_id}")
 async def get_file(
     file_id: str,
-    session: AsyncSession = Depends(get_async_db)
+    session: AsyncSession = Depends(get_async_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Public endpoint for file retrieval - no authentication required for images"""
+    """Images remain public for logos; stock documents require company access."""
     rec = await svc.get_file(file_id)
     if not rec:
         raise HTTPException(status_code=404, detail="File not found")
+    is_document = not rec.content_type.startswith("image/")
+    if is_document:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        if not rec.company_id:
+            raise HTTPException(status_code=403, detail="Company access denied")
+        await ensure_company_access(rec.company_id, current_user, session)
     if rec.file_path and os.path.exists(rec.file_path):
         return FileResponse(rec.file_path, media_type=rec.content_type, filename=rec.original_filename)
     if rec.remote_url:
-        # For S3 files, redirect to the S3 URL (works for <img> src)
+        if is_document:
+            expected_host = f"{svc.upload_service.s3_bucket_name}.s3.{svc.upload_service.s3_region}.amazonaws.com"
+            location = urlparse(rec.remote_url)
+            if location.hostname != expected_host:
+                raise HTTPException(status_code=500, detail="Invalid document storage location")
+            content = await svc.upload_service.download_from_s3(unquote(location.path.lstrip("/")))
+            disposition = f"attachment; filename*=UTF-8''{quote(rec.original_filename)}"
+            return Response(content=content, media_type=rec.content_type, headers={"Content-Disposition": disposition})
+        # Public images can be used directly by <img> elements.
         from fastapi.responses import RedirectResponse
         return RedirectResponse(url=rec.remote_url, status_code=302)
     raise HTTPException(status_code=404, detail="File not found")

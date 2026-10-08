@@ -1,5 +1,6 @@
 from typing import List, Optional
 from datetime import datetime
+import re
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -91,6 +92,23 @@ class StockMovementService:
                     total=item.total,
                     unit=item.unit,
                 ))
+            if payload.document_reference and "/files/" in payload.document_reference:
+                from app.models.file_model import FileRecord
+                file_match = re.search(r"/files/([A-Za-z0-9]{15})(?:\?.*)?$", payload.document_reference)
+                if not file_match:
+                    raise HTTPException(status_code=400, detail="Invalid document reference")
+                pending_file = await session.scalar(select(FileRecord).where(
+                    FileRecord.id == file_match.group(1),
+                    FileRecord.company_id == company_id,
+                    FileRecord.entity_type == "stock_movement",
+                    FileRecord.entity_id.like("temp-stock-%"),
+                    FileRecord.field_name == "document_url",
+                    FileRecord.is_active == True,
+                ))
+                if not pending_file:
+                    raise HTTPException(status_code=400, detail="Stock document not found")
+                await session.flush()
+                pending_file.entity_id = movement.id
             for product_id, quantity in quantities.items():
                 product = products[product_id]
                 delta = -quantity if payload.movement_type == MovementType.OUT else quantity
@@ -217,6 +235,18 @@ class StockMovementService:
                 product = products[product_id]
                 product.stock = (product.stock or 0) + (quantity if movement_type == MovementType.OUT else -quantity)
                 product.updated_at = datetime.now()
+            if movement.document_reference:
+                file_match = re.search(r"/files/([A-Za-z0-9]{15})(?:\?.*)?$", movement.document_reference)
+                if file_match:
+                    from app.models.file_model import FileRecord
+                    attachment = await session.scalar(select(FileRecord).where(
+                        FileRecord.id == file_match.group(1),
+                        FileRecord.company_id == company_id,
+                        FileRecord.entity_type == "stock_movement",
+                        FileRecord.entity_id == movement.id,
+                    ))
+                    if attachment:
+                        attachment.is_active = False
             await session.delete(movement)
             await session.commit()
             return True

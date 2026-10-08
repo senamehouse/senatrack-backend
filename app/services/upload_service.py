@@ -151,5 +151,21 @@ class UploadService:
             logger.error(f"S3 delete failed: {str(e)}")
             return False
 
+    async def download_from_s3(self, s3_key: str) -> bytes:
+        """Fetch a private document for an authorized backend request."""
+        try:
+            async with self.s3_session.client(
+                "s3",
+                aws_access_key_id=self.s3_access_key,
+                aws_secret_access_key=self.s3_secret_key,
+                region_name=self.s3_region,
+                endpoint_url=f"https://s3.{self.s3_region}.amazonaws.com",
+            ) as s3:
+                response = await s3.get_object(Bucket=self.s3_bucket_name, Key=s3_key)
+                async with response["Body"] as body:
+                    return await body.read()
+        except Exception:
+            raise HTTPException(status_code=502, detail="Document storage unavailable")
+
 # Create a singleton instance
 upload_service = UploadService()

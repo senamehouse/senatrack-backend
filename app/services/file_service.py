@@ -1,6 +1,8 @@
 import os
 import hashlib
 import re
+import io
+import zipfile
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime
@@ -22,7 +24,7 @@ class FileService:
         self.upload_service = UploadService()
         self.local_files_path = Path(settings.LOCAL_FILES_PATH)
 
-    async def _validate_file(self, file: UploadFile) -> tuple[bytes, str]:
+    async def _validate_file(self, file: UploadFile, entity_type: str, field_name: str) -> tuple[bytes, str]:
         if not file.filename:
             raise HTTPException(status_code=400, detail="No filename provided")
         if len(file.filename) > 255:
@@ -40,10 +42,30 @@ class FileService:
             content_type = "image/gif"
         elif content.startswith(b"RIFF") and content[8:12] == b"WEBP":
             content_type = "image/webp"
+        elif entity_type == "stock_movement" and field_name == "document_url" and content.startswith(b"%PDF-"):
+            content_type = "application/pdf"
+        elif entity_type == "stock_movement" and field_name == "document_url" and content.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+            content_type = "application/msword"
+        elif entity_type == "stock_movement" and field_name == "document_url" and content.startswith(b"PK\x03\x04"):
+            try:
+                with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                    if "word/document.xml" not in archive.namelist() or any(name.lower().endswith("vbaproject.bin") for name in archive.namelist()):
+                        raise ValueError("Not a macro-free DOCX")
+            except (zipfile.BadZipFile, ValueError):
+                raise HTTPException(status_code=400, detail="File is not a supported document")
+            content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         else:
-            raise HTTPException(status_code=400, detail="File is not a supported image")
-        if content_type not in settings.ALLOWED_FILE_TYPES:
+            raise HTTPException(status_code=400, detail="File is not a supported image or document")
+        document_types = {"application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+        if content_type not in settings.ALLOWED_FILE_TYPES and content_type not in document_types:
             raise HTTPException(status_code=400, detail="File type not allowed")
+        document_extensions = {
+            "application/pdf": ".pdf",
+            "application/msword": ".doc",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+        }
+        if content_type in document_extensions and Path(file.filename).suffix.lower() != document_extensions[content_type]:
+            raise HTTPException(status_code=400, detail="Document extension does not match its content")
         return content, content_type
 
     def _generate_hash(self, content: bytes, entity_id: str, field_name: str, company_id: Optional[str]) -> str:
@@ -55,7 +77,7 @@ class FileService:
         return h.hexdigest()
 
     def _unique_filename(self, content_type: str, file_hash: str) -> str:
-        extensions = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}
+        extensions = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp", "application/pdf": ".pdf", "application/msword": ".doc", "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx"}
         return f"{file_hash}{extensions[content_type]}"
 
     def _entity_storage_dir(self, entity_type: str, entity_id: str, field_name: str, company_id: Optional[str] = None) -> Path:
@@ -78,7 +100,7 @@ class FileService:
         - online: Direct upload to S3
         - offline: Save to local filesystem only
         """
-        content, content_type = await self._validate_file(file)
+        content, content_type = await self._validate_file(file, entity_type, field_name)
         storage_dir = self._entity_storage_dir(entity_type, entity_id, field_name, company_id)
         file_hash = self._generate_hash(content, entity_id, field_name, company_id)
 
@@ -248,7 +270,7 @@ class FileService:
 
     async def get_file(self, file_id: str) -> Optional[FileRecord]:
         session = get_db_session()
-        r = await session.execute(select(FileRecord).where(FileRecord.id == file_id))
+        r = await session.execute(select(FileRecord).where(FileRecord.id == file_id, FileRecord.is_active == True))
         return r.scalar_one_or_none()
 
     async def get_entity_files(self, entity_type: str, entity_id: str, company_id: str) -> list[Dict[str, Any]]:

@@ -2,6 +2,7 @@
 
 import os
 import io
+import zipfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -56,6 +57,7 @@ from app.services.sales_service import SalesService  # noqa: E402
 from app.schemas.stock_movement_schema import StockMovementCreate, StockMovementItemCreate, StockMovementUpdate, MovementType  # noqa: E402
 from app.schemas.sales_schema import SaleCreate, SaleItemCreate, SaleUpdate, PaymentStatus  # noqa: E402
 from app.routes.stock_movement_route import create_movement  # noqa: E402
+from app.routes.file_route import get_file as get_file_route, svc as file_route_service  # noqa: E402
 from app.routes.user_route import update_user_as_admin, update_user_status, update_user_platform_role, update_user  # noqa: E402
 from app.schemas.user_schema import UserAdminUpdate, UserStatusUpdate, UserPlatformRoleUpdate, UserUpdate  # noqa: E402
 from app.schemas.invitation_schema import CompanyInvitationCreate, CompanyInvitation as CompanyInvitationSchema  # noqa: E402
@@ -167,6 +169,81 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(insufficient.exception.status_code, 409)
             self.assertEqual((await session.scalars(select(SaleModel))).all(), [])
             self.assertEqual((await session.get(Product, "sale-product")).stock, 3)
+
+    async def test_stock_documents_are_validated_claimed_and_private(self):
+        async with local_async_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            session.add_all([
+                ProductCategory(id="document-category", company_id="company-a", name="General"),
+                ProductUnit(id="document-unit", company_id="company-a", name="Piece", abbreviation="pc"),
+            ])
+            await session.flush()
+            session.add(Product(
+                id="document-product", company_id="company-a", name="Item", stock=1,
+                category_id="document-category", unit_id="document-unit", buy_price=25, sell_price=50,
+            ))
+            await session.commit()
+
+            with tempfile.TemporaryDirectory(prefix="senatrack-stock-document-") as temp_files:
+                with patch.object(file_route_service, "local_files_path", Path(temp_files)):
+                    def upload(content: bytes, name: str) -> UploadFile:
+                        return UploadFile(file=io.BytesIO(content), filename=name, headers=Headers({"content-type": "application/octet-stream"}))
+
+                    pdf = await file_route_service.save_file(
+                        upload(b"%PDF-1.7\n%%EOF", "receipt.pdf"),
+                        "stock_movement", "temp-stock-test-unique", "document_url", "company-a",
+                    )
+                    with self.assertRaises(HTTPException) as anonymous:
+                        await get_file_route(pdf["file_id"], session=session, current_user=None)
+                    self.assertEqual(anonymous.exception.status_code, 401)
+                    with patch("app.routes.file_route.ensure_company_access", new=AsyncMock(side_effect=HTTPException(status_code=403, detail="Denied"))):
+                        with self.assertRaises(HTTPException) as other_company:
+                            await get_file_route(pdf["file_id"], session=session, current_user=SimpleNamespace(id="other"))
+                    self.assertEqual(other_company.exception.status_code, 403)
+                    with patch("app.routes.file_route.ensure_company_access", new=AsyncMock()):
+                        response = await get_file_route(pdf["file_id"], session=session, current_user=SimpleNamespace(id="owner"))
+                    self.assertEqual(response.media_type, "application/pdf")
+                    pdf_record = await session.get(FileRecord, pdf["file_id"])
+                    pdf_record.file_path = None
+                    pdf_record.remote_url = f"https://{file_route_service.upload_service.s3_bucket_name}.s3.{file_route_service.upload_service.s3_region}.amazonaws.com/company-a/stock_movement/private.pdf"
+                    await session.commit()
+                    with patch("app.routes.file_route.ensure_company_access", new=AsyncMock()), patch.object(
+                        file_route_service.upload_service, "download_from_s3", new=AsyncMock(return_value=b"%PDF-1.7\n%%EOF")
+                    ) as download:
+                        private_response = await get_file_route(pdf["file_id"], session=session, current_user=SimpleNamespace(id="owner"))
+                    download.assert_awaited_once_with("company-a/stock_movement/private.pdf")
+                    self.assertEqual(private_response.body, b"%PDF-1.7\n%%EOF")
+                    self.assertIn("attachment", private_response.headers["content-disposition"])
+
+                    with self.assertRaises(HTTPException):
+                        await file_route_service.save_file(upload(b"%PDF-1.7", "logo.pdf"), "company", "company-a", "logo_url", "company-a")
+                    with self.assertRaises(HTTPException):
+                        await file_route_service.save_file(upload(b"%PDF-1.7", "receipt.doc"), "stock_movement", "temp-stock-test-unique", "document_url", "company-a")
+                    with self.assertRaises(HTTPException):
+                        await file_route_service.save_file(upload(b"PK\x03\x04not-a-zip", "fake.docx"), "stock_movement", "temp-stock-test-unique", "document_url", "company-a")
+
+                    docx_bytes = io.BytesIO()
+                    with zipfile.ZipFile(docx_bytes, "w") as archive:
+                        archive.writestr("word/document.xml", "<document/>")
+                    docx = await file_route_service.save_file(
+                        upload(docx_bytes.getvalue(), "note.docx"),
+                        "stock_movement", "temp-stock-other", "document_url", "company-a",
+                    )
+                    self.assertEqual(docx["content_type"], "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+                    movement = StockMovementCreate(
+                        date=datetime.utcnow(), movement_type="entree", label="Receipt",
+                        author="Tester", total_value=25,
+                        document_reference=f"http://localhost/files/{pdf['file_id']}",
+                        items=[StockMovementItemCreate(product_id="document-product", product_name="Item", quantity=1, price=25, total=25, unit="pc")],
+                    )
+                    movement_id = await StockMovementService().create("company-a", movement)
+                    self.assertEqual((await session.get(FileRecord, pdf["file_id"])).entity_id, movement_id)
+                    self.assertTrue(await StockMovementService().delete(movement_id, "company-a"))
+                    self.assertFalse((await session.get(FileRecord, pdf["file_id"])).is_active)
+                    self.assertIsNone(await file_route_service.get_file(pdf["file_id"]))
 
     async def test_role_migration_with_legacy_columns_is_idempotent(self):
         async with local_async_engine.begin() as connection:
