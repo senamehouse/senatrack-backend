@@ -179,9 +179,7 @@ def get_database_info() -> dict:
 
 
 async def _apply_non_destructive_alters(conn, dialect: str):
-    """Best-effort schema evolutions: add company_id columns and indexes if missing.
-    Keep columns nullable to avoid destructive changes. Backfill local with COMPANY_ID.
-    """
+    """Add missing nullable tenant columns and recover ownership where it is known."""
     company_id = settings.COMPANY_ID
     # Pending company logos use `temp-company-<user id>`, which is longer than
     # the original file_records.entity_id VARCHAR(20) on PostgreSQL.
@@ -209,13 +207,21 @@ async def _apply_non_destructive_alters(conn, dialect: str):
         columns = await conn.execute(text("PRAGMA table_info(suppliers)"))
         if "details" not in {row[1] for row in columns}:
             await conn.execute(text("ALTER TABLE suppliers ADD COLUMN details JSON"))
-    # Tables to alter (must match models): simple list approach
-    tables = [
+    # Preserve legacy sync tables and include every current model that owns a
+    # company_id. create_all() does not add columns to existing tables.
+    legacy_tables = [
         "users","product_categories","units","products","suppliers","clients","services",
         "tva","abic","stock_movements","stock_movement_items","sales","sale_items",
         "activity_logs","proformas","company_members","companies","sync_log","activation_keys",
         "company_invitations","user_roles","user_role_assignments","user_company_roles","user_company_role_assignments"
     ]
+    model_tables = [table.name for table in Base.metadata.tables.values() if "company_id" in table.c]
+    tables = list(dict.fromkeys([*legacy_tables, *model_tables]))
+    child_sources = {
+        "employee_leave_requests": ("employees", "employee_id"),
+        "employee_payrolls": ("employees", "employee_id"),
+        "purchase_orders": ("suppliers", "supplier_id"),
+    }
 
     existing_tables = set(await conn.run_sync(lambda sync_conn: inspect(sync_conn).get_table_names()))
     for table_name in tables:
@@ -229,8 +235,26 @@ async def _apply_non_destructive_alters(conn, dialect: str):
             columns = await conn.execute(text(f"PRAGMA table_info({quoted_table})"))
             if "company_id" not in {column[1] for column in columns}:
                 await conn.execute(text(f"ALTER TABLE {quoted_table} ADD COLUMN company_id VARCHAR(64)"))
-            if company_id:
+            if company_id and table_name not in child_sources and table_name != "file_records":
                 await conn.execute(text(f"UPDATE {quoted_table} SET company_id = :cid WHERE company_id IS NULL"), {"cid": company_id})
+
+    # Recover tenant ownership from parent records, never the local fallback.
+    # Do not assign an unrelated tenant to orphaned historical records.
+    for child, (parent, foreign_key) in child_sources.items():
+        if child not in existing_tables or parent not in existing_tables:
+            continue
+        quoted_child = conn.dialect.identifier_preparer.quote(child)
+        quoted_parent = conn.dialect.identifier_preparer.quote(parent)
+        await conn.execute(text(f"""
+            UPDATE {quoted_child} SET company_id = (
+                SELECT owner.company_id FROM {quoted_parent} AS owner
+                WHERE owner.id = {quoted_child}.{foreign_key}
+            )
+            WHERE company_id IS NULL AND EXISTS (
+                SELECT 1 FROM {quoted_parent} AS owner
+                WHERE owner.id = {quoted_child}.{foreign_key} AND owner.company_id IS NOT NULL
+            )
+        """))
 
 # Database configuration and setup only
 # All database operations are handled by services

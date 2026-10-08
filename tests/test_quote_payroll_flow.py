@@ -83,6 +83,69 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
         await local_async_engine.dispose()
         _test_db.unlink(missing_ok=True)
 
+    async def test_legacy_child_tables_gain_company_scope_without_reassigning_records(self):
+        async with local_async_engine.begin() as connection:
+            await connection.execute(text("""CREATE TABLE employee_payrolls (
+                id VARCHAR(20) PRIMARY KEY, employee_id VARCHAR(20) NOT NULL,
+                period_month INTEGER NOT NULL, period_year INTEGER NOT NULL,
+                net_salary FLOAT NOT NULL, paid_date VARCHAR(20),
+                created_at DATETIME, updated_at DATETIME
+            )"""))
+            await connection.execute(text("""CREATE TABLE employee_leave_requests (
+                id VARCHAR(20) PRIMARY KEY, employee_id VARCHAR(20) NOT NULL,
+                leave_type VARCHAR(30) NOT NULL, status VARCHAR(20) NOT NULL,
+                start_date VARCHAR(20) NOT NULL, end_date VARCHAR(20) NOT NULL,
+                days_requested INTEGER NOT NULL, created_at DATETIME, updated_at DATETIME
+            )"""))
+            await connection.execute(text("""CREATE TABLE purchase_orders (
+                id VARCHAR(20) PRIMARY KEY, order_number VARCHAR(100) NOT NULL,
+                supplier_id VARCHAR(64), status VARCHAR(20) NOT NULL,
+                total_amount FLOAT NOT NULL, created_at DATETIME, updated_at DATETIME
+            )"""))
+            await connection.run_sync(Base.metadata.create_all)
+            await connection.execute(text("""INSERT INTO employees
+                (id, company_id, first_name, last_name, employment_type, is_active)
+                VALUES ('legacy-employee', 'tenant-a', 'Awa', 'Sene', 'full_time', 1)
+            """))
+            await connection.execute(text("""INSERT INTO employee_payrolls
+                (id, employee_id, period_month, period_year, net_salary)
+                VALUES ('legacy-payroll', 'legacy-employee', 10, 2026, 50000)
+            """))
+            await connection.execute(text("""INSERT INTO employee_payrolls
+                (id, employee_id, period_month, period_year, net_salary)
+                VALUES ('orphan-payroll', 'missing-employee', 10, 2026, 50000)
+            """))
+            await connection.execute(text("""INSERT INTO employee_leave_requests
+                (id, employee_id, leave_type, status, start_date, end_date, days_requested)
+                VALUES ('legacy-leave', 'legacy-employee', 'annual', 'pending', '2026-10-08', '2026-10-09', 2)
+            """))
+            await connection.execute(text("""INSERT INTO suppliers
+                (id, company_id, name, is_active)
+                VALUES ('legacy-supplier', 'tenant-a', 'Supplier', 1)
+            """))
+            await connection.execute(text("""INSERT INTO purchase_orders
+                (id, order_number, supplier_id, status, total_amount)
+                VALUES ('legacy-order', 'PO-1', 'legacy-supplier', 'draft', 25)
+            """))
+            with patch.object(settings, "COMPANY_ID", "wrong-tenant"):
+                await _apply_non_destructive_alters(connection, dialect="sqlite")
+                await _apply_non_destructive_alters(connection, dialect="sqlite")
+            for table_name, record_id in (
+                ("employee_payrolls", "legacy-payroll"),
+                ("employee_leave_requests", "legacy-leave"),
+                ("purchase_orders", "legacy-order"),
+            ):
+                columns = await connection.execute(text(f"PRAGMA table_info({table_name})"))
+                self.assertIn("company_id", {column[1] for column in columns})
+                company = await connection.scalar(text(
+                    f"SELECT company_id FROM {table_name} WHERE id = :record_id"
+                ), {"record_id": record_id})
+                self.assertEqual(company, "tenant-a")
+            orphan_company = await connection.scalar(text(
+                "SELECT company_id FROM employee_payrolls WHERE id = 'orphan-payroll'"
+            ))
+            self.assertIsNone(orphan_company)
+
     async def test_database_info_requires_platform_admin(self):
         from app.main import app
         route = next(route for route in app.routes if getattr(route, "path", None) == "/database-info")
