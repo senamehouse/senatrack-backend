@@ -8,6 +8,7 @@ from app.core.database import get_db_session
 from app.models.stock_movement_model import StockMovement as StockMovementModel, StockMovementItem as StockMovementItemModel
 from app.schemas.stock_movement_schema import StockMovement as StockMovementSchema, StockMovementCreate, StockMovementUpdate, MovementType
 from app.utils.activity_logger import audit, ActivityActor
+from app.utils.stock_alerts import stock_alert_threshold
 
 class StockMovementService:
     async def get_all(self, company_id: str) -> List[StockMovementSchema]:
@@ -307,19 +308,25 @@ class StockMovementService:
         try:
             session = get_db_session()
             from app.models.product_model import Product as ProductModel
+            from app.models.company_model import Company as CompanyModel
             from sqlalchemy import func
 
+            company_settings = await session.scalar(select(CompanyModel.settings).where(CompanyModel.id == company_id))
+            threshold = stock_alert_threshold(company_settings)
+
             total_result = await session.execute(
-                select(func.count(ProductModel.id)).where(ProductModel.company_id == company_id)
+                select(func.count(ProductModel.id)).where(
+                    ProductModel.company_id == company_id,
+                    ProductModel.is_active == True,
+                )
             )
             total_products = total_result.scalar() or 0
 
-            # Use default threshold of 10 for low stock detection
             low_stock_result = await session.execute(
                 select(func.count(ProductModel.id)).where(
                     ProductModel.company_id == company_id,
-                    ProductModel.stock <= 10,  # Default threshold
-                    ProductModel.stock > 0
+                    ProductModel.is_active == True,
+                    ProductModel.stock <= threshold,
                 )
             )
             low_stock = low_stock_result.scalar() or 0
@@ -327,14 +334,16 @@ class StockMovementService:
             out_of_stock_result = await session.execute(
                 select(func.count(ProductModel.id)).where(
                     ProductModel.company_id == company_id,
-                    ProductModel.stock == 0
+                    ProductModel.is_active == True,
+                    ProductModel.stock <= 0,
                 )
             )
             out_of_stock = out_of_stock_result.scalar() or 0
 
             value_result = await session.execute(
                 select(func.coalesce(func.sum(ProductModel.stock * ProductModel.buy_price), 0)).where(
-                    ProductModel.company_id == company_id
+                    ProductModel.company_id == company_id,
+                    ProductModel.is_active == True,
                 )
             )
             total_stock_value = value_result.scalar() or 0

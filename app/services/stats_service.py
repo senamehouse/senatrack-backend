@@ -6,9 +6,14 @@ from fastapi import HTTPException
 
 from app.core.database import get_db_session
 from app.schemas.stats_schema import DashboardStats, SalesStats, StockSummary, DailySales
-from app.models.product_model import Product as ProductModel
+from app.models.product_model import Product as ProductModel, ProductCategory, ProductUnit
+from app.models.service_model import Service as ServiceModel
+from app.models.supplier_model import Supplier as SupplierModel
+from app.models.client_model import Client as ClientModel
+from app.models.company_model import Company as CompanyModel
 from app.models.sales_model import Sale as SaleModel
 from app.services.sales_service import SalesService
+from app.utils.stock_alerts import stock_alert_threshold
 
 
 class StatsService:
@@ -16,14 +21,13 @@ class StatsService:
         try:
             session = get_db_session()
 
-            # Counts (basic entity counts)
+            # Active catalog and contact counts for the selected company.
             products_count = await self._count_where(session, ProductModel, company_id)
-            # For simplicity, set to 0 if not available in this context
-            services_count = 0
-            categories_count = 0
-            units_count = 0
-            suppliers_count = 0
-            clients_count = 0
+            services_count = await self._count_where(session, ServiceModel, company_id)
+            categories_count = await self._count_where(session, ProductCategory, company_id)
+            units_count = await self._count_where(session, ProductUnit, company_id)
+            suppliers_count = await self._count_where(session, SupplierModel, company_id)
+            clients_count = await self._count_where(session, ClientModel, company_id)
 
             # Sales stats with profit
             sales_stats = await self._get_sales_stats(session, company_id, time_range)
@@ -50,9 +54,10 @@ class StatsService:
             raise HTTPException(status_code=500, detail=f"Error retrieving dashboard stats: {str(e)}")
 
     async def _count_where(self, session, model, company_id: str) -> int:
-        result = await session.execute(
-            select(func.count(model.id)).where(getattr(model, "company_id") == company_id)
-        )
+        query = select(func.count(model.id)).where(model.company_id == company_id)
+        if hasattr(model, "is_active"):
+            query = query.where(model.is_active == True)
+        result = await session.execute(query)
         return int(result.scalar() or 0)
 
     async def _get_sales_stats(self, session, company_id: str, time_range: str) -> SalesStats:
@@ -107,6 +112,8 @@ class StatsService:
         )
 
     async def _get_stock_summary(self, session, company_id: str) -> StockSummary:
+        company_settings = await session.scalar(select(CompanyModel.settings).where(CompanyModel.id == company_id))
+        threshold = stock_alert_threshold(company_settings)
         # Total products
         total_result = await session.execute(
             select(func.count(ProductModel.id)).where(
@@ -121,7 +128,7 @@ class StatsService:
             select(func.count(ProductModel.id)).where(
                 ProductModel.company_id == company_id,
                 ProductModel.is_active == True,
-                ProductModel.stock <= 10,
+                ProductModel.stock <= threshold,
             )
         )
         low_stock = int(low_stock_result.scalar() or 0)
@@ -144,12 +151,24 @@ class StatsService:
         )
         total_stock_value = float(value_result.scalar() or 0.0)
 
+        low_products_result = await session.execute(
+            select(ProductModel.id, ProductModel.name, ProductModel.stock).where(
+                ProductModel.company_id == company_id,
+                ProductModel.is_active == True,
+                ProductModel.stock <= threshold,
+            ).order_by(ProductModel.stock, ProductModel.name).limit(3)
+        )
+        low_stock_products = [
+            {"id": product_id, "name": name, "stock": stock}
+            for product_id, name, stock in low_products_result.all()
+        ]
+
         return StockSummary(
             totalProducts=total_products,
             lowStock=low_stock,
             outOfStock=out_of_stock,
             totalStockValue=total_stock_value,
-            lowStockProducts=[],
+            lowStockProducts=low_stock_products,
         )
 
     async def _get_daily_sales(self, session, company_id: str, time_range: str) -> list[DailySales]:

@@ -27,6 +27,9 @@ from app.models.company_model import Company, CompanyMember as CompanyMemberMode
 from app.models.employee_model import EmployeeModel  # noqa: E402
 from app.models.file_model import FileRecord  # noqa: E402
 from app.models.product_model import Product, ProductCategory, ProductUnit  # noqa: E402
+from app.models.service_model import Service as ServiceModel  # noqa: E402
+from app.models.supplier_model import Supplier as SupplierModel  # noqa: E402
+from app.models.client_model import Client as ClientModel  # noqa: E402
 from app.models.stock_movement_model import StockMovement as StockMovementModel, StockMovementItem as StockMovementItemModel  # noqa: E402
 from app.models.sales_model import Sale as SaleModel  # noqa: E402
 from app.models.user_model import User  # noqa: E402
@@ -53,6 +56,7 @@ from app.services.user_service import UserService  # noqa: E402
 from app.services.auth_service import AuthService  # noqa: E402
 from app.services.migration_service import MigrationService  # noqa: E402
 from app.services.stock_movement_service import StockMovementService  # noqa: E402
+from app.services.stats_service import StatsService  # noqa: E402
 from app.services.sales_service import SalesService  # noqa: E402
 from app.schemas.stock_movement_schema import StockMovementCreate, StockMovementItemCreate, StockMovementUpdate, MovementType  # noqa: E402
 from app.schemas.sales_schema import SaleCreate, SaleItemCreate, SaleUpdate, PaymentStatus  # noqa: E402
@@ -148,6 +152,47 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(updated_category.is_active)
             updated_unit = await update_unit(unit.id, UnitUpdate(is_active=False), session=session, current_user=user, company_id="company-a")
             self.assertFalse(updated_unit.is_active)
+
+    async def test_dashboard_counts_and_stock_alerts_follow_company_settings(self):
+        async with local_async_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            session.add_all([
+                User(id="dashboard-owner", name="Owner", email="dashboard-owner@example.com", hashed_password="unused"),
+                Company(id="dashboard-company", name="Dashboard", owner_id="dashboard-owner", settings={"stockAlertThreshold": 0}),
+                Company(id="other-dashboard", name="Other", owner_id="dashboard-owner", settings={"stockAlertThreshold": 10}),
+                ProductCategory(id="dashboard-category", company_id="dashboard-company", name="General"),
+                ProductUnit(id="dashboard-unit", company_id="dashboard-company", name="Piece", abbreviation="pc"),
+                ProductCategory(id="other-category", company_id="other-dashboard", name="Other"),
+                ProductUnit(id="other-unit", company_id="other-dashboard", name="Piece", abbreviation="pc"),
+                ServiceModel(id="dashboard-service", company_id="dashboard-company", name="Delivery", unit="trip", price=25),
+                SupplierModel(id="dashboard-supplier", company_id="dashboard-company", name="Supplier"),
+                ClientModel(id="dashboard-client", company_id="dashboard-company", name="Client"),
+                Product(id="dashboard-empty", company_id="dashboard-company", name="Empty", stock=0, buy_price=25, sell_price=50, category_id="dashboard-category", unit_id="dashboard-unit"),
+                Product(id="dashboard-low", company_id="dashboard-company", name="Low", stock=1, buy_price=25, sell_price=50, category_id="dashboard-category", unit_id="dashboard-unit"),
+                Product(id="dashboard-full", company_id="dashboard-company", name="Full", stock=20, buy_price=25, sell_price=50, category_id="dashboard-category", unit_id="dashboard-unit"),
+                Product(id="dashboard-inactive", company_id="dashboard-company", name="Inactive", stock=100, buy_price=25, sell_price=50, category_id="dashboard-category", unit_id="dashboard-unit", is_active=False),
+                Product(id="other-product", company_id="other-dashboard", name="Other", stock=0, buy_price=25, sell_price=50, category_id="other-category", unit_id="other-unit"),
+            ])
+            await session.commit()
+
+            dashboard = await StatsService().get_dashboard_stats("dashboard-company")
+            self.assertEqual((dashboard.products_count, dashboard.services_count, dashboard.categories_count, dashboard.units_count, dashboard.suppliers_count, dashboard.clients_count), (3, 1, 1, 1, 1, 1))
+            self.assertEqual(dashboard.stock_summary.low_stock, 1)
+            self.assertEqual(dashboard.stock_summary.out_of_stock, 1)
+            self.assertEqual(dashboard.stock_summary.total_stock_value, 525)
+            self.assertEqual([item["name"] for item in dashboard.stock_summary.low_stock_products], ["Empty"])
+            summary = await StockMovementService().get_stock_summary("dashboard-company")
+            self.assertEqual((summary["totalProducts"], summary["lowStock"], summary["outOfStock"], summary["totalStockValue"]), (3, 1, 1, 525))
+
+            company = await session.get(Company, "dashboard-company")
+            company.settings = {"stockAlertThreshold": 2}
+            await session.commit()
+            dashboard = await StatsService().get_dashboard_stats("dashboard-company")
+            self.assertEqual(dashboard.stock_summary.low_stock, 2)
+            self.assertEqual([item["name"] for item in dashboard.stock_summary.low_stock_products], ["Empty", "Low"])
+            self.assertEqual((await StockMovementService().get_stock_summary("dashboard-company"))["lowStock"], 2)
 
     async def test_stock_movement_round_trip_and_reversal(self):
         async with local_async_engine.begin() as connection:
