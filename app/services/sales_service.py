@@ -2,7 +2,7 @@ from typing import List, Optional
 from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy import select
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db_session
@@ -250,13 +250,12 @@ class SalesService:
                 )
                 session.add(sale_candidate)
                 try:
-                    await session.commit()
-                    await session.refresh(sale_candidate)
+                    await session.flush()
                     sale = sale_candidate
                     break
                 except IntegrityError as exc:
                     await session.rollback()
-                    if "ix_sales_reference" not in str(exc.orig) or attempt == max_attempts - 1:
+                    if not any(marker in str(exc.orig) for marker in ("ix_sales_reference", "uq_sales_company_reference", "sales.company_id, sales.reference")) or attempt == max_attempts - 1:
                         raise
                     continue
 
@@ -279,50 +278,48 @@ class SalesService:
                     price_modified=getattr(item, 'price_modified', False),
                 )
                 session.add(sale_item)
-            await session.commit()
-            
-            # Create stock movement (OUT) for product items in this sale
-            try:
-                from app.schemas.stock_movement_schema import (
-                    StockMovementCreate, StockMovementItemCreate, MovementType
+            # Persist the sale, items, movement, and stock decrement together.
+            from app.schemas.stock_movement_schema import (
+                StockMovementCreate, StockMovementItemCreate, MovementType
+            )
+            from app.services.stock_movement_service import StockMovementService
+
+            out_items: list[StockMovementItemCreate] = []
+            for item in payload.items:
+                if (getattr(item, "item_type", "product") or "product") == "product":
+                    out_items.append(StockMovementItemCreate(
+                        product_id=item.product_id,
+                        product_name=item.product_name,
+                        quantity=item.quantity,
+                        price=item.sell_price,
+                        total=item.total_price,
+                        unit=getattr(item, "unit", "") or ""
+                    ))
+
+            if out_items:
+                stock_mvt_payload = StockMovementCreate(
+                    date=datetime.utcnow(),
+                    movement_type=MovementType.OUT,
+                    label="Vente",
+                    supplier_id=None,
+                    customer_id=payload.client_id,
+                    reason="Sale deduction",
+                    author=sale.seller_id or "system",
+                    details=None,
+                    document_reference=sale.reference,
+                    total_value=payload.total,
+                    items=out_items,
                 )
-                from app.services.stock_movement_service import StockMovementService
-
-                out_items: list[StockMovementItemCreate] = []
-                for item in payload.items:
-                    # Only decrement stock for products
-                    if getattr(item, "item_type", "product") == "product":
-                        out_items.append(StockMovementItemCreate(
-                            product_id=item.product_id,
-                            product_name=item.product_name,
-                            quantity=item.quantity,
-                            price=item.sell_price,
-                            total=item.total_price,
-                            unit=getattr(item, "unit", "") or ""
-                        ))
-
-                if out_items:
-                    stock_mvt_payload = StockMovementCreate(
-                        date=datetime.utcnow(),
-                        movement_type=MovementType.OUT,
-                        label="Vente",
-                        supplier_id=None,
-                        customer_id=payload.client_id,
-                        reason="Sale deduction",
-                        author=sale.seller_id or "system",
-                        details=None,
-                        document_reference=sale.reference,
-                        total_value=payload.total,
-                        items=out_items,
-                    )
-                    stock_svc = StockMovementService()
-                    await stock_svc.create(company_id, stock_mvt_payload)
-            except Exception:
-                # Do not fail the sale if movement creation fails
-                pass
+                await StockMovementService().create(company_id, stock_mvt_payload)
+            else:
+                await session.commit()
 
             return sale.id
+        except HTTPException:
+            await session.rollback()
+            raise
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error creating sale: {str(e)}")
 
     @audit(
@@ -344,15 +341,31 @@ class SalesService:
             sale = result.scalar_one_or_none()
             if not sale:
                 return False
+            old_reference = sale.reference
             for field, value in payload.model_dump(exclude_unset=True).items():
                 if field == 'payment_status' and value is not None:
                     setattr(sale, 'payment_status', value.value)
                 else:
                     setattr(sale, field, value)
+            if sale.reference != old_reference:
+                from app.models.stock_movement_model import StockMovement as StockMovementModel
+                movement_result = await session.execute(
+                    select(StockMovementModel).where(
+                        StockMovementModel.company_id == company_id,
+                        StockMovementModel.document_reference == old_reference,
+                        StockMovementModel.reason == "Sale deduction",
+                    )
+                )
+                for movement in movement_result.scalars():
+                    movement.document_reference = sale.reference
             sale.updated_at = datetime.now()
             await session.commit()
             return True
+        except HTTPException:
+            await session.rollback()
+            raise
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error updating sale: {str(e)}")
 
     @audit(
@@ -373,10 +386,45 @@ class SalesService:
             sale = result.scalar_one_or_none()
             if not sale:
                 return False
+            from app.models.stock_movement_model import StockMovement as StockMovementModel
+            from app.models.product_model import Product as ProductModel
+            movement_result = await session.execute(
+                select(StockMovementModel)
+                .options(selectinload(StockMovementModel.items))
+                .where(
+                    StockMovementModel.company_id == company_id,
+                    StockMovementModel.document_reference == sale.reference,
+                    StockMovementModel.reason == "Sale deduction",
+                )
+            )
+            movements = movement_result.scalars().all()
+            quantities: dict[str, int] = {}
+            for movement in movements:
+                for item in movement.items:
+                    quantities[item.product_id] = quantities.get(item.product_id, 0) + item.quantity
+            if quantities:
+                products_result = await session.execute(
+                    select(ProductModel).where(
+                        ProductModel.company_id == company_id,
+                        ProductModel.id.in_(quantities),
+                    ).with_for_update()
+                )
+                products = {product.id: product for product in products_result.scalars()}
+                if len(products) != len(quantities):
+                    raise HTTPException(status_code=409, detail="A sale product no longer exists")
+                for product_id, quantity in quantities.items():
+                    products[product_id].stock = (products[product_id].stock or 0) + quantity
+                    products[product_id].updated_at = datetime.now()
+            for movement in movements:
+                await session.delete(movement)
             await session.delete(sale)
             await session.commit()
             return True
+        except HTTPException:
+            await session.rollback()
+            raise
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error deleting sale: {str(e)}")
 
     async def generate_sale_reference(self, company_id: str, session: AsyncSession | None = None) -> str:

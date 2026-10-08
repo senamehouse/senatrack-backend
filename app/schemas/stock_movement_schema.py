@@ -5,9 +5,14 @@ from enum import Enum
 
 
 class MovementType(str, Enum):
-    IN = "in"
-    OUT = "out"
-    ADJUSTMENT = "adjustment"
+    IN = "entree"
+    OUT = "sortie"
+    ADJUSTMENT = "ajustement"
+
+    @classmethod
+    def _missing_(cls, value):
+        # Read and accept movements created by older API clients.
+        return {"in": cls.IN, "out": cls.OUT, "adjustment": cls.ADJUSTMENT}.get(value)
 
 
 class StockMovementItemBase(BaseCamelModel):
@@ -62,5 +67,5 @@ class StockMovement(StockMovementBase):
     id: str
     company_id: str
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
     items: List[StockMovementItem] = []

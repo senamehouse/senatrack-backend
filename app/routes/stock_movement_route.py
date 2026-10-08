@@ -47,7 +47,7 @@ async def get_movement(
     return mv
 
 
-@router.post("/", response_model=dict)
+@router.post("/", response_model=StockMovementSchema)
 async def create_movement(
     payload: StockMovementCreate,
     session: AsyncSession = Depends(get_async_db),
@@ -55,10 +55,10 @@ async def create_movement(
     company_id: str = Depends(get_company_id)
 ):
     movement_id = await svc.create(company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
-    return {"message": "Stock movement created", "movement_id": movement_id}
+    return await svc.get_by_id(movement_id, company_id)
 
 
-@router.put("/{movement_id}", response_model=dict)
+@router.put("/{movement_id}", response_model=StockMovementSchema)
 async def update_movement(
     movement_id: str,
     payload: StockMovementUpdate,
@@ -69,7 +69,7 @@ async def update_movement(
     ok = await svc.update(movement_id=movement_id, company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Stock movement not found")
-    return {"message": "Stock movement updated"}
+    return await svc.get_by_id(movement_id, company_id)
 
 
 @router.delete("/{movement_id}", response_model=dict)

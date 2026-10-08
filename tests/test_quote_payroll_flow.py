@@ -5,6 +5,7 @@ import io
 import tempfile
 import unittest
 from pathlib import Path
+from datetime import datetime
 from uuid import uuid4
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -24,6 +25,9 @@ from app.core.settings import settings  # noqa: E402
 from app.models.company_model import Company, CompanyMember as CompanyMemberModel, UserCompanyRoleModel, UserCompanyRoleAssignmentModel  # noqa: E402
 from app.models.employee_model import EmployeeModel  # noqa: E402
 from app.models.file_model import FileRecord  # noqa: E402
+from app.models.product_model import Product, ProductCategory, ProductUnit  # noqa: E402
+from app.models.stock_movement_model import StockMovement as StockMovementModel, StockMovementItem as StockMovementItemModel  # noqa: E402
+from app.models.sales_model import Sale as SaleModel  # noqa: E402
 from app.models.user_model import User  # noqa: E402
 from app.models.tva_rate_model import TvaRateModel  # noqa: E402
 from app.schemas.company_schema import CompanyCreate, CompanySettings  # noqa: E402
@@ -47,6 +51,11 @@ from app.services.invitation_service import InvitationService  # noqa: E402
 from app.services.user_service import UserService  # noqa: E402
 from app.services.auth_service import AuthService  # noqa: E402
 from app.services.migration_service import MigrationService  # noqa: E402
+from app.services.stock_movement_service import StockMovementService  # noqa: E402
+from app.services.sales_service import SalesService  # noqa: E402
+from app.schemas.stock_movement_schema import StockMovementCreate, StockMovementItemCreate, StockMovementUpdate, MovementType  # noqa: E402
+from app.schemas.sales_schema import SaleCreate, SaleItemCreate, SaleUpdate, PaymentStatus  # noqa: E402
+from app.routes.stock_movement_route import create_movement  # noqa: E402
 from app.routes.user_route import update_user_as_admin, update_user_status, update_user_platform_role, update_user  # noqa: E402
 from app.schemas.user_schema import UserAdminUpdate, UserStatusUpdate, UserPlatformRoleUpdate, UserUpdate  # noqa: E402
 from app.schemas.invitation_schema import CompanyInvitationCreate, CompanyInvitation as CompanyInvitationSchema  # noqa: E402
@@ -58,6 +67,106 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
         set_db_session(None)
         await local_async_engine.dispose()
         _test_db.unlink(missing_ok=True)
+
+    async def test_stock_movement_round_trip_and_reversal(self):
+        async with local_async_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            session.add_all([
+                ProductCategory(id="stock-category", company_id="company-a", name="General"),
+                ProductUnit(id="stock-unit", company_id="company-a", name="Piece", abbreviation="pc"),
+            ])
+            await session.flush()
+            session.add(Product(
+                id="stock-product", company_id="company-a", name="Item", stock=3,
+                category_id="stock-category", unit_id="stock-unit", buy_price=25, sell_price=50,
+            ))
+            await session.commit()
+
+            service = StockMovementService()
+            item = StockMovementItemCreate(
+                product_id="stock-product", product_name="Item", quantity=2,
+                price=25, total=50, unit="pc",
+            )
+            payload = StockMovementCreate(
+                date=datetime.utcnow(), movement_type="entree", label="Reception",
+                supplier_id="supplier-1", author="Tester", total_value=50, items=[item],
+            )
+            created = await create_movement(payload, session=session, current_user=SimpleNamespace(id="tester", email="tester@example.com", name="Tester"), company_id="company-a")
+            self.assertEqual(created.movement_type, MovementType.IN)
+            self.assertEqual(created.supplier_id, "supplier-1")
+            self.assertEqual(created.items[0].quantity, 2)
+            self.assertEqual((await session.get(Product, "stock-product")).stock, 5)
+            self.assertEqual((await service.get_stock_summary("company-a"))["totalStockValue"], 125)
+            self.assertEqual((await service.get_all("company-a"))[0].items[0].product_name, "Item")
+            self.assertEqual((await service.get_by_id(created.id, "company-a")).items[0].total, 50)
+
+            with self.assertRaises(HTTPException) as invalid_type:
+                await service.update(created.id, "company-a", StockMovementUpdate(movement_type="sortie"))
+            self.assertEqual(invalid_type.exception.status_code, 400)
+
+            self.assertTrue(await service.delete(created.id, "company-a"))
+            self.assertEqual((await session.get(Product, "stock-product")).stock, 3)
+            self.assertIsNone(await session.get(StockMovementModel, created.id))
+            self.assertEqual((await session.scalars(select(StockMovementItemModel))).all(), [])
+
+            self.assertEqual(MovementType("out"), MovementType.OUT)
+            outgoing = payload.model_copy(update={"movement_type": MovementType.OUT, "items": [item.model_copy(update={"quantity": 4})]})
+            with self.assertRaises(HTTPException) as insufficient:
+                await service.create("company-a", outgoing)
+            self.assertEqual(insufficient.exception.status_code, 409)
+            self.assertEqual((await session.scalars(select(StockMovementModel))).all(), [])
+            self.assertEqual((await session.get(Product, "stock-product")).stock, 3)
+
+    async def test_sale_and_stock_change_commit_or_rollback_together(self):
+        async with local_async_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            session.add_all([
+                ProductCategory(id="sale-category", company_id="company-a", name="General"),
+                ProductUnit(id="sale-unit", company_id="company-a", name="Piece", abbreviation="pc"),
+            ])
+            await session.flush()
+            session.add(Product(
+                id="sale-product", company_id="company-a", name="Item", stock=3,
+                category_id="sale-category", unit_id="sale-unit", buy_price=25, sell_price=50,
+            ))
+            await session.commit()
+
+            service = SalesService()
+            item = SaleItemCreate(
+                product_id="sale-product", product_name="Item", quantity=2,
+                sell_price=50, total_price=100, unit="pc",
+            )
+            payload = SaleCreate(
+                date=datetime.utcnow(), subtotal=100, total=100,
+                payment_status=PaymentStatus.PENDING, items=[item],
+            )
+            sale_id = await service.create("company-a", payload)
+            self.assertEqual((await session.get(Product, "sale-product")).stock, 1)
+            movements = await StockMovementService().get_movements_by_sale_id(sale_id, "company-a")
+            self.assertEqual(len(movements), 1)
+            self.assertEqual(movements[0].items[0].quantity, 2)
+            with self.assertRaises(HTTPException) as linked_movement:
+                await StockMovementService().delete(movements[0].id, "company-a")
+            self.assertEqual(linked_movement.exception.status_code, 409)
+
+            self.assertTrue(await service.update(sale_id, "company-a", SaleUpdate(reference="VNT-TEST-123")))
+            self.assertEqual(len(await StockMovementService().get_movements_by_sale_id(sale_id, "company-a")), 1)
+
+            self.assertTrue(await service.delete(sale_id, "company-a"))
+            self.assertEqual((await session.get(Product, "sale-product")).stock, 3)
+            self.assertIsNone(await session.get(SaleModel, sale_id))
+            self.assertEqual((await session.scalars(select(StockMovementModel))).all(), [])
+
+            duplicate_items = payload.model_copy(update={"items": [item, item]})
+            with self.assertRaises(HTTPException) as insufficient:
+                await service.create("company-a", duplicate_items)
+            self.assertEqual(insufficient.exception.status_code, 409)
+            self.assertEqual((await session.scalars(select(SaleModel))).all(), [])
+            self.assertEqual((await session.get(Product, "sale-product")).stock, 3)
 
     async def test_role_migration_with_legacy_columns_is_idempotent(self):
         async with local_async_engine.begin() as connection:

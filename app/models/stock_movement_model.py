@@ -24,13 +24,16 @@ class StockMovement(Base):
     total_value: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now())
+    items: Mapped[list["StockMovementItem"]] = relationship(
+        "StockMovementItem", back_populates="movement", cascade="all, delete-orphan"
+    )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
             "company_id": self.company_id,
             "date": self.date.isoformat() if self.date else None,
-            "movement_type": self.movement_type,
+            "movement_type": {"in": "entree", "out": "sortie", "adjustment": "ajustement"}.get(self.movement_type, self.movement_type),
             "label": self.label,
             "supplier_id": self.supplier_id,
             "customer_id": self.customer_id,
@@ -41,6 +44,7 @@ class StockMovement(Base):
             "total_value": self.total_value,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "items": [item.to_dict() for item in self.items],
         }
 
 
@@ -55,6 +59,7 @@ class StockMovementItem(Base):
     price: Mapped[float] = mapped_column(Float, nullable=False)
     total: Mapped[float] = mapped_column(Float, nullable=False)
     unit: Mapped[str] = mapped_column(String(50), nullable=False)
+    movement: Mapped[StockMovement] = relationship("StockMovement", back_populates="items")
 
     def to_dict(self) -> Dict[str, Any]:
         return {

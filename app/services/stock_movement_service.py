@@ -2,9 +2,10 @@ from typing import List, Optional
 from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.core.database import get_db_session
 from app.models.stock_movement_model import StockMovement as StockMovementModel, StockMovementItem as StockMovementItemModel
-from app.schemas.stock_movement_schema import StockMovement as StockMovementSchema, StockMovementCreate, StockMovementUpdate, StockMovementItemCreate
+from app.schemas.stock_movement_schema import StockMovement as StockMovementSchema, StockMovementCreate, StockMovementUpdate, MovementType
 from app.utils.activity_logger import audit, ActivityActor
 
 class StockMovementService:
@@ -13,6 +14,7 @@ class StockMovementService:
             session = get_db_session()
             result = await session.execute(
                 select(StockMovementModel)
+                .options(selectinload(StockMovementModel.items))
                 .where(StockMovementModel.company_id == company_id)
                 .order_by(StockMovementModel.date.desc())
             )
@@ -25,7 +27,7 @@ class StockMovementService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(StockMovementModel).where(
+                select(StockMovementModel).options(selectinload(StockMovementModel.items)).where(
                     StockMovementModel.id == movement_id,
                     StockMovementModel.company_id == company_id,
                 )
@@ -45,6 +47,27 @@ class StockMovementService:
     async def create(self, company_id: str, payload: StockMovementCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
+            from app.models.product_model import Product as ProductModel
+            if not payload.items:
+                raise HTTPException(status_code=400, detail="At least one product is required")
+            quantities: dict[str, int] = {}
+            for item in payload.items:
+                if item.quantity <= 0 or item.price < 0:
+                    raise HTTPException(status_code=400, detail="Invalid item quantity or price")
+                quantities[item.product_id] = quantities.get(item.product_id, 0) + item.quantity
+            products_result = await session.execute(
+                select(ProductModel).where(
+                    ProductModel.company_id == company_id,
+                    ProductModel.id.in_(quantities),
+                ).with_for_update()
+            )
+            products = {product.id: product for product in products_result.scalars()}
+            if len(products) != len(quantities):
+                raise HTTPException(status_code=400, detail="A product does not belong to this company")
+            if payload.movement_type == MovementType.OUT:
+                for product_id, quantity in quantities.items():
+                    if (products[product_id].stock or 0) < quantity:
+                        raise HTTPException(status_code=409, detail="Insufficient product stock")
             movement = StockMovementModel(
                 company_id=company_id,
                 date=payload.date,
@@ -59,13 +82,8 @@ class StockMovementService:
                 total_value=payload.total_value,
             )
             session.add(movement)
-            await session.commit()
-            await session.refresh(movement)
-
-            # Add items
             for item in payload.items:
-                session.add(StockMovementItemModel(
-                    stock_movement_id=movement.id,
+                movement.items.append(StockMovementItemModel(
                     product_id=item.product_id,
                     product_name=item.product_name,
                     quantity=item.quantity,
@@ -73,34 +91,18 @@ class StockMovementService:
                     total=item.total,
                     unit=item.unit,
                 ))
-            await session.commit()
-
-            # Update product stock based on movement type
-            from app.models.product_model import Product as ProductModel
-            # OUT = decrement, IN = increment, ADJUSTMENT = apply delta (+/-)
-            for item in payload.items:
-                product_result = await session.execute(
-                    select(ProductModel).where(
-                        ProductModel.id == item.product_id,
-                        ProductModel.company_id == company_id
-                    )
-                )
-                product = product_result.scalar_one_or_none()
-                if not product:
-                    continue
-
-                if payload.movement_type.value == "out":
-                    product.stock = max(0, (product.stock or 0) - item.quantity)
-                elif payload.movement_type.value == "in":
-                    product.stock = (product.stock or 0) + item.quantity
-                elif payload.movement_type.value == "adjustment":
-                    product.stock = max(0, (product.stock or 0) + item.quantity)
-
+            for product_id, quantity in quantities.items():
+                product = products[product_id]
+                delta = -quantity if payload.movement_type == MovementType.OUT else quantity
+                product.stock = (product.stock or 0) + delta
                 product.updated_at = datetime.now()
-
             await session.commit()
             return movement.id
+        except HTTPException:
+            await session.rollback()
+            raise
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error creating stock movement: {str(e)}")
 
     @audit(
@@ -114,7 +116,7 @@ class StockMovementService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(StockMovementModel).where(
+                select(StockMovementModel).options(selectinload(StockMovementModel.items)).where(
                     StockMovementModel.id == movement_id,
                     StockMovementModel.company_id == company_id,
                 )
@@ -122,11 +124,21 @@ class StockMovementService:
             movement = result.scalar_one_or_none()
             if not movement:
                 return False
+            if movement.reason == "Sale deduction":
+                from app.models.sales_model import Sale as SaleModel
+                sale_result = await session.execute(
+                    select(SaleModel.id).where(
+                        SaleModel.company_id == company_id,
+                        SaleModel.reference == movement.document_reference,
+                    )
+                )
+                if sale_result.scalar_one_or_none():
+                    raise HTTPException(status_code=409, detail="Delete the sale to reverse its stock movement")
 
             if payload.date is not None:
                 movement.date = payload.date
-            if payload.movement_type is not None:
-                movement.movement_type = payload.movement_type.value
+            if payload.movement_type is not None and payload.movement_type != MovementType(movement.movement_type):
+                raise HTTPException(status_code=400, detail="Movement type cannot be changed after stock is recorded")
             if payload.label is not None:
                 movement.label = payload.label
             if payload.supplier_id is not None:
@@ -147,7 +159,11 @@ class StockMovementService:
             movement.updated_at = datetime.now()
             await session.commit()
             return True
+        except HTTPException:
+            await session.rollback()
+            raise
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error updating stock movement: {str(e)}")
 
     @audit(
@@ -160,7 +176,7 @@ class StockMovementService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(StockMovementModel).where(
+                select(StockMovementModel).options(selectinload(StockMovementModel.items)).where(
                     StockMovementModel.id == movement_id,
                     StockMovementModel.company_id == company_id,
                 )
@@ -168,11 +184,47 @@ class StockMovementService:
             movement = result.scalar_one_or_none()
             if not movement:
                 return False
+            if movement.reason == "Sale deduction":
+                from app.models.sales_model import Sale as SaleModel
+                sale_result = await session.execute(
+                    select(SaleModel.id).where(
+                        SaleModel.company_id == company_id,
+                        SaleModel.reference == movement.document_reference,
+                    )
+                )
+                if sale_result.scalar_one_or_none():
+                    raise HTTPException(status_code=409, detail="Delete the sale to reverse its stock movement")
 
+            from app.models.product_model import Product as ProductModel
+            movement_type = MovementType(movement.movement_type)
+            quantities: dict[str, int] = {}
+            for item in movement.items:
+                quantities[item.product_id] = quantities.get(item.product_id, 0) + item.quantity
+            products_result = await session.execute(
+                select(ProductModel).where(
+                    ProductModel.company_id == company_id,
+                    ProductModel.id.in_(quantities),
+                ).with_for_update()
+            )
+            products = {product.id: product for product in products_result.scalars()}
+            if len(products) != len(quantities):
+                raise HTTPException(status_code=409, detail="A movement product no longer exists")
+            if movement_type != MovementType.OUT:
+                for product_id, quantity in quantities.items():
+                    if (products[product_id].stock or 0) < quantity:
+                        raise HTTPException(status_code=409, detail="Cannot reverse movement: insufficient stock")
+            for product_id, quantity in quantities.items():
+                product = products[product_id]
+                product.stock = (product.stock or 0) + (quantity if movement_type == MovementType.OUT else -quantity)
+                product.updated_at = datetime.now()
             await session.delete(movement)
             await session.commit()
             return True
+        except HTTPException:
+            await session.rollback()
+            raise
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error deleting stock movement: {str(e)}")
 
     async def get_product_stock(self, product_id: str, company_id: str) -> int:
@@ -208,6 +260,7 @@ class StockMovementService:
 
             result = await session.execute(
                 select(StockMovementModel)
+                .options(selectinload(StockMovementModel.items))
                 .where(
                     StockMovementModel.company_id == company_id,
                     StockMovementModel.document_reference == sale_reference
@@ -249,10 +302,18 @@ class StockMovementService:
             )
             out_of_stock = out_of_stock_result.scalar() or 0
 
+            value_result = await session.execute(
+                select(func.coalesce(func.sum(ProductModel.stock * ProductModel.buy_price), 0)).where(
+                    ProductModel.company_id == company_id
+                )
+            )
+            total_stock_value = value_result.scalar() or 0
+
             return {
                 "totalProducts": total_products,
                 "lowStock": low_stock,
-                "outOfStock": out_of_stock
+                "outOfStock": out_of_stock,
+                "totalStockValue": total_stock_value,
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error getting stock stats: {str(e)}")
