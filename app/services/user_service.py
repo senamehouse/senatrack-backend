@@ -154,10 +154,6 @@ class UserService:
                 user.current_company_id = update_dict['current_company_id']
             
             user.updated_at = datetime.now()
-            await session.commit()
-            await session.refresh(user)
-            
-            # Log sync operation
             sync_log = SyncLog(
                 operation='UPDATE',
                 table_name='users',
@@ -166,11 +162,14 @@ class UserService:
             )
             session.add(sync_log)
             await session.commit()
+            await session.refresh(user)
             
             return User(**user.to_dict())
         except HTTPException:
+            await session.rollback()
             raise
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error updating user: {str(e)}")
     
     async def delete_user(self, user_id: str) -> bool:
@@ -188,9 +187,6 @@ class UserService:
             # Soft delete
             user.is_active = False
             user.updated_at = datetime.now()
-            await session.commit()
-            
-            # Log sync operation
             sync_log = SyncLog(
                 operation='DELETE',
                 table_name='users',
@@ -202,6 +198,7 @@ class UserService:
             
             return True
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
     
     async def get_users_count(self) -> int:

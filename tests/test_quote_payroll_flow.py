@@ -33,6 +33,7 @@ from app.models.client_model import Client as ClientModel  # noqa: E402
 from app.models.stock_movement_model import StockMovement as StockMovementModel, StockMovementItem as StockMovementItemModel  # noqa: E402
 from app.models.sales_model import Sale as SaleModel  # noqa: E402
 from app.models.user_model import User  # noqa: E402
+from app.models.sync_model import SyncLog  # noqa: E402
 from app.models.tva_rate_model import TvaRateModel  # noqa: E402
 from app.schemas.company_schema import CompanyCreate, CompanySettings  # noqa: E402
 from app.schemas.company_role_schema import DEFAULT_COMPANY_ROLES  # noqa: E402
@@ -926,6 +927,40 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(current_member.current_company_id)
             profile = await auth_service.get_user_profile(current_member, token)
             self.assertEqual(profile.current_company_id, "test-company")
+
+    async def test_user_company_switch_and_deletion_roll_back_with_sync_log(self):
+        async with local_async_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            session.add_all([
+                User(id="switch-user", name="Switcher", email="switcher@example.com", hashed_password="unused"),
+                Company(id="switch-a", name="A", owner_id="switch-user"),
+                Company(id="switch-b", name="B", owner_id="switch-user"),
+            ])
+            await session.commit()
+            user = await session.get(User, "switch-user")
+            user.current_company_id = "switch-a"
+            await session.commit()
+
+            service = UserService()
+            updated = await service.update_user("switch-user", {"current_company_id": "switch-b"})
+            self.assertEqual(updated.current_company_id, "switch-b")
+            self.assertEqual(len((await session.scalars(select(SyncLog).where(SyncLog.table_name == "users"))).all()), 1)
+
+            with patch.object(session, "commit", new=AsyncMock(side_effect=RuntimeError("sync write failed"))):
+                with self.assertRaises(HTTPException) as failed_switch:
+                    await service.update_user("switch-user", {"current_company_id": "switch-a"})
+            self.assertEqual(failed_switch.exception.status_code, 500)
+            self.assertEqual((await session.get(User, "switch-user")).current_company_id, "switch-b")
+            self.assertEqual(len((await session.scalars(select(SyncLog).where(SyncLog.table_name == "users"))).all()), 1)
+
+            with patch.object(session, "commit", new=AsyncMock(side_effect=RuntimeError("sync write failed"))):
+                with self.assertRaises(HTTPException) as failed_delete:
+                    await service.delete_user("switch-user")
+            self.assertEqual(failed_delete.exception.status_code, 500)
+            self.assertTrue((await session.get(User, "switch-user")).is_active)
+            self.assertEqual(len((await session.scalars(select(SyncLog).where(SyncLog.table_name == "users"))).all()), 1)
 
 if __name__ == "__main__":
     unittest.main()
