@@ -410,6 +410,44 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Regular User", [role.name for role in await UserService().get_user_roles(created_id)])
             self.assertFalse((await migration.get_migration_status())["migration_needed"])
 
+    async def test_role_migration_ignores_foreign_company_assignments(self):
+        async with local_async_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            session.add_all([
+                User(id="role-owner", name="Owner", email="role-owner@example.com", hashed_password="unused"),
+                User(id="role-member", name="Member", email="role-member@example.com", hashed_password="unused"),
+                Company(id="role-company-a", name="A", owner_id="role-owner"),
+                Company(id="role-company-b", name="B", owner_id="role-owner"),
+                CompanyMemberModel(id="role-membership", company_id="role-company-a", user_id="role-member"),
+            ])
+            await session.commit()
+            migration = MigrationService()
+            await migration.run_full_migration()
+            self.assertFalse((await migration.get_migration_status())["migration_needed"])
+
+            foreign_role = await session.scalar(select(UserCompanyRoleModel).where(
+                UserCompanyRoleModel.company_id == "role-company-b",
+                UserCompanyRoleModel.name == "Opérateur",
+            ))
+            member_assignment = await session.scalar(select(UserCompanyRoleAssignmentModel).where(
+                UserCompanyRoleAssignmentModel.company_id == "role-company-a",
+                UserCompanyRoleAssignmentModel.user_id == "role-member",
+            ))
+            member_assignment.role_id = foreign_role.id
+            await session.commit()
+
+            status = await migration.get_migration_status()
+            self.assertTrue(status["migration_needed"])
+            self.assertEqual(status["company_members_without_new_roles"], 1)
+            self.assertEqual((await migration.migrate_company_member_roles())["migrated_members"], 1)
+            self.assertFalse((await migration.get_migration_status())["migration_needed"])
+            self.assertEqual(
+                [role.name for role in await CompanyService().get_user_company_roles("role-member", "role-company-a")],
+                ["Opérateur"],
+            )
+
     async def test_startup_migrates_legacy_administrator(self):
         async with local_async_engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)

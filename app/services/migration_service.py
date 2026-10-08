@@ -72,12 +72,17 @@ class MigrationService:
         members.update((owner_id, company_id) for company_id, owner_id in owners.items())
         assignment_rows = await session.execute(
             select(UserCompanyRoleAssignmentModel.user_id, UserCompanyRoleAssignmentModel.company_id)
+            .join(UserCompanyRoleModel, UserCompanyRoleModel.id == UserCompanyRoleAssignmentModel.role_id)
+            .where(UserCompanyRoleModel.company_id == UserCompanyRoleAssignmentModel.company_id)
         )
         assigned = set(assignment_rows)
         owner_assignment_rows = await session.execute(
             select(UserCompanyRoleAssignmentModel.user_id, UserCompanyRoleAssignmentModel.company_id)
             .join(UserCompanyRoleModel, UserCompanyRoleModel.id == UserCompanyRoleAssignmentModel.role_id)
-            .where(UserCompanyRoleModel.name == "Propriétaire")
+            .where(
+                UserCompanyRoleModel.name == "Propriétaire",
+                UserCompanyRoleModel.company_id == UserCompanyRoleAssignmentModel.company_id,
+            )
         )
         owners_with_owner_role = set(owner_assignment_rows)
         role_mapping = {
@@ -145,13 +150,18 @@ class MigrationService:
         assigned_user_ids = set(assigned_user_list)
         assigned_member_rows = await session.execute(
             select(UserCompanyRoleAssignmentModel.user_id, UserCompanyRoleAssignmentModel.company_id)
+            .join(UserCompanyRoleModel, UserCompanyRoleModel.id == UserCompanyRoleAssignmentModel.role_id)
+            .where(UserCompanyRoleModel.company_id == UserCompanyRoleAssignmentModel.company_id)
         )
         assigned_member_list = list(assigned_member_rows)
         assigned_member_keys = set(assigned_member_list)
         owner_role_rows = await session.execute(
             select(UserCompanyRoleAssignmentModel.user_id, UserCompanyRoleAssignmentModel.company_id)
             .join(UserCompanyRoleModel, UserCompanyRoleModel.id == UserCompanyRoleAssignmentModel.role_id)
-            .where(UserCompanyRoleModel.name == "Propriétaire")
+            .where(
+                UserCompanyRoleModel.name == "Propriétaire",
+                UserCompanyRoleModel.company_id == UserCompanyRoleAssignmentModel.company_id,
+            )
         )
         owners_with_owner_role = set(owner_role_rows)
         platform_role_rows = await session.execute(select(UserRoleModel.id))
