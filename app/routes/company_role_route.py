@@ -7,7 +7,7 @@ from app.schemas.user_schema import User
 from app.schemas.company_role_schema import (
     UserCompanyRole, UserCompanyRoleCreate, UserCompanyRoleUpdate, 
     UserCompanyRoleAssignmentCreate, CompanyPermissionCheck, CompanyPermissionCheckResponse,
-    CompanyRoleDeleteResponse, CompanyRoleAssignResponse, CompanyRoleRemoveResponse
+    CompanyRoleDeleteResponse, CompanyRoleAssignResponse, CompanyRoleRemoveResponse, CompanyMemberRoleUpdate
 )
 from app.services.company_service import CompanyService
 from app.utils.activity_logger import ActivityActor
@@ -108,6 +108,17 @@ async def get_user_company_roles(
 ):
     """Get all company roles assigned to a user"""
     return await company_service.get_user_company_roles(user_id, company_id)
+
+@router.put("/{company_id}/users/{user_id}/role", response_model=UserCompanyRole, dependencies=[Depends(require_company_owner)])
+async def set_company_member_role(
+    company_id: str,
+    user_id: str,
+    update_data: CompanyMemberRoleUpdate,
+    session: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    role = await company_service.set_company_member_role(company_id, user_id, update_data.role_id, current_user.id)
+    return role.to_dict()
 
 @router.get("/{company_id}/users/{user_id}/permissions", response_model=List[str])
 async def get_user_company_permissions(

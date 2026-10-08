@@ -1,7 +1,7 @@
 from app.utils.casing import BaseCamelModel
 from pydantic import EmailStr, Field
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 
 # Shared User Schemas
 class UserBase(BaseCamelModel):
@@ -22,6 +22,16 @@ class UserUpdate(BaseCamelModel):
     phone_number: Optional[str] = Field(None, max_length=20, alias="phoneNumber")
     current_company_id: Optional[str] = Field(None, alias="currentCompanyId")
 
+class UserAdminUpdate(BaseCamelModel):
+    name: str = Field(..., min_length=2, max_length=100)
+    email: EmailStr
+
+class UserStatusUpdate(BaseCamelModel):
+    is_active: bool = Field(..., alias="isActive")
+
+class UserPlatformRoleUpdate(BaseCamelModel):
+    role_name: Literal["Platform Administrator", "Regular User"] = Field(..., alias="roleName")
+
 class User(UserBase):
     """Schema for user (public info)"""
     
@@ -36,6 +46,8 @@ class User(UserBase):
     # New role system fields
     platform_roles: List[str] = Field(default_factory=list, alias="platformRoles")
     platform_permissions: List[str] = Field(default_factory=list, alias="platformPermissions")
+    companies: List[str] = Field(default_factory=list)
+    company_roles: List[str] = Field(default_factory=list, alias="companyRoles")
 
 class UserInternal(User):
     """Internal user schema with sensitive fields"""

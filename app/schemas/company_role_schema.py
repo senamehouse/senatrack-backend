@@ -106,6 +106,9 @@ class UserCompanyRoleAssignment(UserCompanyRoleAssignmentBase):
     id: str
     assigned_at: datetime = Field(..., alias="assignedAt")
 
+class CompanyMemberRoleUpdate(BaseCamelModel):
+    role_id: str = Field(..., alias="roleId")
+
 # Company Permission Check Schema
 class CompanyPermissionCheck(BaseCamelModel):
     """Schema for checking company permissions"""

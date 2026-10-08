@@ -39,6 +39,9 @@ from app.services.file_service import FileService  # noqa: E402
 from app.services.activation_key_service import ActivationKeyService  # noqa: E402
 from app.schemas.activation_key_schema import ActivationKeyCreate, ActivationKeyUsageResponse  # noqa: E402
 from app.services.invitation_service import InvitationService  # noqa: E402
+from app.services.user_service import UserService  # noqa: E402
+from app.routes.user_route import update_user_as_admin, update_user_status, update_user_platform_role, update_user  # noqa: E402
+from app.schemas.user_schema import UserAdminUpdate, UserStatusUpdate, UserPlatformRoleUpdate, UserUpdate  # noqa: E402
 from app.schemas.invitation_schema import CompanyInvitationCreate, CompanyInvitation as CompanyInvitationSchema  # noqa: E402
 from app.routes.invitation_route import create_invitation as create_invitation_route, get_pending_invitations as pending_invitations_route  # noqa: E402
 
@@ -65,7 +68,7 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
         async with LocalAsyncSession() as session:
             set_db_session(session)
             session.add_all([
-                User(id="test-user", name="Tester", email="tester@example.invalid", hashed_password="unused"),
+                User(id="test-user", name="Tester", email="tester@example.com", hashed_password="unused"),
                 Company(id="test-company", name="Test Company", owner_id="test-user"),
                 EmployeeModel(id="test-employee", company_id="test-company", first_name="Awa", last_name="Sene"),
             ])
@@ -145,7 +148,7 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
                 CompanySettings.model_validate({"tva": {"enabled": True, "defaultRateId": "test-rate"},
                     "stockAlertThreshold": 5, "allowPriceModification": False}),
                 session,
-                SimpleNamespace(id="test-user", email="tester@example.invalid", name="Tester"),
+                SimpleNamespace(id="test-user", email="tester@example.com", name="Tester"),
             )
             self.assertEqual(company.settings["tva"]["defaultRateId"], "test-rate")
             self.assertEqual(company.settings["stockAlertThreshold"], 5)
@@ -165,7 +168,7 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await get_company_id(stale_cookie_request, "test-company", session, owner), "test-company")
 
             session.add_all([
-                User(id="test-member", name="Member", email="member@example.invalid", hashed_password="unused"),
+                User(id="test-member", name="Member", email="member@example.com", hashed_password="unused"),
                 CompanyMemberModel(id="test-membership", company_id="test-company", user_id="test-member", is_active=True),
             ])
             await session.commit()
@@ -192,6 +195,16 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(denied.exception.status_code, 403)
             await company_service.assign_company_role_to_user("test-member", "test-company", "test-role", "test-user")
             self.assertEqual([role.id for role in await company_service.get_user_company_roles("test-member", "test-company")], ["test-role"])
+            await company_service.set_company_member_role("test-company", "test-member", "test-role", "test-user")
+            self.assertEqual([role.id for role in await company_service.get_user_company_roles("test-member", "test-company")], ["test-role"])
+            member_list = await company_service.get_company_users("test-company")
+            self.assertEqual(next(user for user in member_list if user.id == "test-member").company_roles, ["Gestionnaire"])
+            with self.assertRaises(HTTPException) as denied:
+                await company_service.set_company_member_role("test-company", "test-member", "foreign-role", "test-user")
+            self.assertEqual(denied.exception.status_code, 404)
+            with self.assertRaises(HTTPException) as denied:
+                await company_service.set_company_member_role("test-company", "test-user", "test-role", "test-user")
+            self.assertEqual(denied.exception.status_code, 400)
 
             file_service = FileService()
             with tempfile.TemporaryDirectory(prefix="senatrack-file-test-") as temp_files:
@@ -236,6 +249,34 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(accepted.success)
             await ensure_company_access("test-company", SimpleNamespace(id="invitee", platform_permissions=[]), session)
             self.assertEqual([role.name for role in await company_service.get_user_company_roles("invitee", "test-company")], ["Opérateur"])
+
+            user_service = UserService()
+            admin = await user_service.set_platform_role("test-user", "Platform Administrator", "test-user")
+            self.assertIn("admin.access", admin.platform_permissions)
+            member_user = await user_service.set_platform_role("test-member", "Regular User", "test-user")
+            self.assertEqual(member_user.platform_roles, ["Regular User"])
+            with self.assertRaises(HTTPException) as denied:
+                await update_user("test-member", UserUpdate(currentCompanyId="other-company"), session, member_user)
+            self.assertEqual(denied.exception.status_code, 403)
+            inactive = await user_service.set_user_active("test-member", False)
+            self.assertFalse(inactive.is_active)
+            self.assertFalse(next(user for user in await company_service.get_company_users("test-company") if user.id == "test-member").is_active)
+            self.assertIsNone(await user_service.get_user_by_id("test-member"))
+            self.assertFalse((await user_service.get_user_by_id("test-member", include_inactive=True)).is_active)
+            self.assertIn("test-member", {user.id for user in await user_service.get_all_users()})
+            self.assertTrue((await user_service.set_user_active("test-member", True)).is_active)
+            self.assertEqual((await user_service.get_user_stats())["total"], 3)
+            with self.assertRaises(HTTPException) as denied:
+                await update_user_as_admin("test-member", UserAdminUpdate(name="Member", email="tester@example.com"), session, admin)
+            self.assertEqual(denied.exception.status_code, 409)
+            renamed = await update_user_as_admin("test-member", UserAdminUpdate(name="New Member", email="newmember@example.com"), session, admin)
+            self.assertEqual(renamed.name, "New Member")
+            with self.assertRaises(HTTPException) as denied:
+                await update_user_status("test-user", UserStatusUpdate(isActive=False), admin)
+            self.assertEqual(denied.exception.status_code, 400)
+            with self.assertRaises(HTTPException) as denied:
+                await update_user_platform_role("test-user", UserPlatformRoleUpdate(roleName="Regular User"), admin)
+            self.assertEqual(denied.exception.status_code, 400)
 
 if __name__ == "__main__":
     unittest.main()

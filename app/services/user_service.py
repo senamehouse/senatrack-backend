@@ -1,10 +1,11 @@
 import json
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import HTTPException
 from sqlalchemy import select, func, update, delete, and_
 from app.core.database import get_db_session
 from app.models.user_model import User as UserModel, UserRoleModel, UserRoleAssignmentModel
+from app.models.company_model import Company as CompanyModel, CompanyMember as CompanyMemberModel
 from app.models.sync_model import SyncLog
 from app.schemas.user_schema import User, UserInternal, UserUpdate
 from app.schemas.user_role_schema import (
@@ -15,28 +16,62 @@ from app.utils.activity_logger import audit, ActivityActor
 
 class UserService:
     """Service for user-related database operations"""
+
+    async def _with_platform_roles(self, users: List[UserModel]) -> List[User]:
+        if not users:
+            return []
+        session = get_db_session()
+        user_ids = [user.id for user in users]
+        role_rows = await session.execute(
+            select(UserRoleAssignmentModel.user_id, UserRoleModel.name, UserRoleModel.permissions)
+            .join(UserRoleModel, UserRoleAssignmentModel.role_id == UserRoleModel.id)
+            .where(UserRoleAssignmentModel.user_id.in_(user_ids))
+        )
+        roles: Dict[str, List[str]] = {user_id: [] for user_id in user_ids}
+        permissions: Dict[str, set[str]] = {user_id: set() for user_id in user_ids}
+        for user_id, role_name, role_permissions in role_rows:
+            roles[user_id].append(role_name)
+            permissions[user_id].update(role_permissions or [])
+        member_rows = await session.execute(select(CompanyMemberModel.user_id, CompanyMemberModel.company_id).where(
+            CompanyMemberModel.user_id.in_(user_ids), CompanyMemberModel.is_active == True,
+        ))
+        companies: Dict[str, set[str]] = {user_id: set() for user_id in user_ids}
+        for user_id, company_id in member_rows:
+            companies[user_id].add(company_id)
+        owner_rows = await session.execute(select(CompanyModel.owner_id, CompanyModel.id).where(
+            CompanyModel.owner_id.in_(user_ids), CompanyModel.is_active == True,
+        ))
+        for user_id, company_id in owner_rows:
+            companies[user_id].add(company_id)
+        return [User.model_validate({
+            **user.to_dict(),
+            "platform_roles": roles[user.id],
+            "platform_permissions": sorted(permissions[user.id]),
+            "companies": sorted(companies[user.id]),
+        }) for user in users]
     
-    async def get_all_users(self) -> List[User]:
-        """Get all active users from the database"""
+    async def get_all_users(self, limit: int = 100) -> List[User]:
+        """Get users, including deactivated accounts, for the admin list."""
         try:
             session = get_db_session()
             result = await session.execute(
-                select(UserModel).where(UserModel.is_active == True)
+                select(UserModel).order_by(UserModel.created_at.desc()).limit(limit)
             )
             users = result.scalars().all()
-            return [User(**user.to_dict()) for user in users]
+            return await self._with_platform_roles(users)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving users: {str(e)}")
     
-    async def get_user_by_id(self, user_id: str) -> Optional[User]:
+    async def get_user_by_id(self, user_id: str, include_inactive: bool = False) -> Optional[User]:
         """Get a user by ID"""
         try:
             session = get_db_session()
-            result = await session.execute(
-                select(UserModel).where(UserModel.id == user_id, UserModel.is_active == True)
-            )
+            query = select(UserModel).where(UserModel.id == user_id)
+            if not include_inactive:
+                query = query.where(UserModel.is_active == True)
+            result = await session.execute(query)
             user = result.scalar_one_or_none()
-            return User(**user.to_dict()) if user else None
+            return (await self._with_platform_roles([user]))[0] if user else None
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving user: {str(e)}")
     
@@ -172,6 +207,45 @@ class UserService:
             return result.scalar()
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error counting users: {str(e)}")
+
+    async def get_user_stats(self) -> Dict[str, int]:
+        session = get_db_session()
+        total = await session.scalar(select(func.count(UserModel.id)))
+        recent = await session.scalar(select(func.count(UserModel.id)).where(
+            UserModel.created_at >= datetime.utcnow() - timedelta(days=1)
+        ))
+        return {"total": total or 0, "recent24h": recent or 0}
+
+    async def set_user_active(self, user_id: str, is_active: bool) -> User:
+        session = get_db_session()
+        user = await session.get(UserModel, user_id)
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        user.is_active = is_active
+        user.updated_at = datetime.utcnow()
+        await session.commit()
+        return await self.get_user_by_id(user_id, include_inactive=True)
+
+    async def set_platform_role(self, user_id: str, role_name: str, assigned_by: str) -> User:
+        session = get_db_session()
+        user = await session.get(UserModel, user_id)
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        preset = next((item for item in DEFAULT_PLATFORM_ROLES.values() if item["name"] == role_name), None)
+        if preset is None:
+            raise HTTPException(status_code=400, detail="Unsupported platform role")
+        role = await session.scalar(select(UserRoleModel).where(UserRoleModel.name == role_name))
+        if role is None:
+            role = UserRoleModel(
+                name=preset["name"], description=preset["description"],
+                permissions=preset["permissions"], is_preset=True, is_system=True,
+            )
+            session.add(role)
+            await session.flush()
+        await session.execute(delete(UserRoleAssignmentModel).where(UserRoleAssignmentModel.user_id == user_id))
+        session.add(UserRoleAssignmentModel(user_id=user_id, role_id=role.id, assigned_by=assigned_by))
+        await session.commit()
+        return await self.get_user_by_id(user_id, include_inactive=True)
     
     async def update_user_last_login(self, user_id: str):
         """Update user's last login timestamp"""

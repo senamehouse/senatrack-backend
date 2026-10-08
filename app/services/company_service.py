@@ -373,14 +373,16 @@ class CompanyService:
             active_subscriptions = 0
             expired_subscriptions = 0
 
-            now = datetime.utcnow()
             for company in companies:
                 if company.subscription and (company.subscription.get("accessEndDate") or company.subscription.get("access_end_date")):
                     access_end = datetime.fromisoformat(company.subscription.get("accessEndDate") or company.subscription["access_end_date"])
+                    now = datetime.now(access_end.tzinfo) if access_end.tzinfo else datetime.utcnow()
                     if now <= access_end:
                         active_subscriptions += 1
                     else:
                         expired_subscriptions += 1
+                else:
+                    expired_subscriptions += 1
 
             return CompanyStats(
                 total=total_companies,
@@ -405,7 +407,8 @@ class CompanyService:
             if company.subscription and (company.subscription.get("accessEndDate") or company.subscription.get("access_end_date")):
                 current_end_date = datetime.fromisoformat(company.subscription.get("accessEndDate") or company.subscription["access_end_date"])
 
-            new_end_date = max(now, current_end_date) + timedelta(days=days)
+            comparable_now = datetime.now(current_end_date.tzinfo) if current_end_date.tzinfo else now
+            new_end_date = max(comparable_now, current_end_date) + timedelta(days=days)
 
             updated_subscription = dict(company.subscription or {})
             updated_subscription.pop("access_end_date", None)
@@ -438,8 +441,7 @@ class CompanyService:
                 .where(
                     and_(
                         CompanyMemberModel.company_id == company_id,
-                        CompanyMemberModel.is_active == True,
-                        UserModel.is_active == True
+                        CompanyMemberModel.is_active == True
                     )
                 )
                 .order_by(UserModel.name)
@@ -451,6 +453,8 @@ class CompanyService:
                 user_dict = user_model.to_dict()
                 platform_roles = await self.user_service.get_user_roles(user_model.id)
                 user_dict['platformRoles'] = [role.name for role in platform_roles]
+                company_roles = await self.get_user_company_roles(user_model.id, company_id)
+                user_dict['companyRoles'] = [role.name for role in company_roles]
                 user_list.append(User(**user_dict))
 
             return user_list
@@ -803,6 +807,37 @@ class CompanyService:
             return result.scalars().all()
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving user company roles: {str(e)}")
+
+    async def set_company_member_role(self, company_id: str, user_id: str, role_id: str, assigned_by: str) -> UserCompanyRoleModel:
+        session = get_db_session()
+        company = await session.get(CompanyModel, company_id)
+        if company is None or not company.is_active:
+            raise HTTPException(status_code=404, detail="Company not found")
+        if company.owner_id == user_id:
+            raise HTTPException(status_code=400, detail="The owner's role cannot be changed")
+        member = await session.scalar(select(CompanyMemberModel.id).where(
+            CompanyMemberModel.company_id == company_id,
+            CompanyMemberModel.user_id == user_id,
+            CompanyMemberModel.is_active == True,
+        ))
+        if member is None:
+            raise HTTPException(status_code=404, detail="Company member not found")
+        role = await session.scalar(select(UserCompanyRoleModel).where(
+            UserCompanyRoleModel.company_id == company_id,
+            UserCompanyRoleModel.id == role_id,
+        ))
+        if role is None or role.name == "Propriétaire":
+            raise HTTPException(status_code=404, detail="Assignable company role not found")
+        await session.execute(delete(UserCompanyRoleAssignmentModel).where(
+            UserCompanyRoleAssignmentModel.company_id == company_id,
+            UserCompanyRoleAssignmentModel.user_id == user_id,
+        ))
+        session.add(UserCompanyRoleAssignmentModel(
+            company_id=company_id, user_id=user_id,
+            role_id=role.id, assigned_by=assigned_by,
+        ))
+        await session.commit()
+        return role
 
     async def get_user_company_permissions(self, user_id: str, company_id: str) -> List[str]:
         """Get all company permissions for a user"""
