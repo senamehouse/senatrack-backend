@@ -229,11 +229,16 @@ class EmployeeService:
                 dept_name = emp.department_relation.name if emp.department_relation else "Unknown"
                 by_department[dept_name] = by_department.get(dept_name, 0) + 1
 
+            monthly_salaries = [emp.salary_amount for emp in employees
+                                if emp.salary_type == "monthly" and emp.salary_amount is not None]
+
             return {
                 "total": total,
                 "active": active,
                 "inactive": inactive,
                 "byDepartment": by_department,
+                "departments": len({emp.department_id for emp in employees if emp.department_id}),
+                "averageSalary": sum(monthly_salaries) / len(monthly_salaries) if monthly_salaries else 0,
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error computing employee stats: {str(e)}")

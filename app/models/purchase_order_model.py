@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Integer, DateTime, Boolean, Float, Text
+from sqlalchemy import String, DateTime, Float, JSON
 from sqlalchemy.sql import func
 from app.core.database import Base
 from app.utils.id_generator import generate_id
@@ -16,19 +16,29 @@ class PurchaseOrder(Base):
     supplier_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
     total_amount: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    details: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now())
 
     def to_dict(self) -> Dict[str, Any]:
+        details = self.details or {}
         return {
+            "supplierName": "",
+            "orderDate": self.created_at.isoformat() if self.created_at else "",
+            "items": [],
+            "subtotal": self.total_amount,
+            "taxRate": 0,
+            "taxAmount": 0,
+            "currency": "FCFA",
+            **details,
             "id": self.id,
-            "company_id": self.company_id,
-            "order_number": self.order_number,
-            "supplier_id": self.supplier_id,
+            "companyId": self.company_id,
+            "orderNumber": self.order_number,
+            "supplierId": self.supplier_id or "",
             "status": self.status,
-            "total_amount": self.total_amount,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "totalAmount": self.total_amount,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 

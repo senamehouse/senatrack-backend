@@ -57,6 +57,9 @@ class PurchaseOrderService:
                 supplier_id=payload.supplier_id,
                 status=payload.status,
                 total_amount=payload.total_amount,
+                details={**payload.model_dump(mode="json", by_alias=True, exclude={"order_number", "supplier_id", "status", "total_amount"}),
+                         "createdBy": actor.user_id if actor else None},
+                created_at=datetime.utcnow(),
             )
             session.add(po)
             await session.commit()
@@ -84,9 +87,13 @@ class PurchaseOrderService:
             po = result.scalar_one_or_none()
             if not po:
                 return False
-            for k, v in payload.model_dump(exclude_unset=True).items():
-                if hasattr(po, k):
-                    setattr(po, k, v)
+            changes = payload.model_dump(mode="json", by_alias=True, exclude_unset=True)
+            core_fields = {"orderNumber": "order_number", "supplierId": "supplier_id",
+                           "status": "status", "totalAmount": "total_amount"}
+            for field, attribute in core_fields.items():
+                if field in changes:
+                    setattr(po, attribute, changes.pop(field))
+            po.details = {**(po.details or {}), **changes}
             po.updated_at = datetime.now()
             await session.commit()
             return True

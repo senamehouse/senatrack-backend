@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.core.dependencies import get_current_user
 from app.core.database import get_async_db
 from app.schemas.user_schema import User
@@ -10,6 +11,7 @@ from app.schemas.company_schema import (
 )
 from app.services.company_service import CompanyService
 from app.utils.activity_logger import ActivityActor
+from app.models.tva_rate_model import TvaRateModel
 
 router = APIRouter(prefix="/companies", tags=["Companies"])
 company_service = CompanyService()
@@ -51,6 +53,41 @@ async def get_company(
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company
+
+
+@router.patch("/{company_id}/settings", response_model=Company)
+async def update_company_settings(
+    company_id: str,
+    settings_data: CompanySettings,
+    session: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    company = await company_service.get_company_by_id(company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    if company.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the company owner can update settings")
+
+    settings = settings_data.model_dump(by_alias=True)
+    tva = settings["tva"]
+    if not isinstance(tva, dict) or not isinstance(tva.get("enabled"), bool):
+        raise HTTPException(status_code=422, detail="Invalid TVA settings")
+    default_rate_id = tva.get("defaultRateId")
+    if default_rate_id:
+        rate = await session.scalar(select(TvaRateModel).where(
+            TvaRateModel.id == default_rate_id,
+            TvaRateModel.company_id == company_id,
+            TvaRateModel.is_active == True,
+        ))
+        if rate is None:
+            raise HTTPException(status_code=422, detail="Invalid default TVA rate")
+
+    merged_settings = {**(company.settings or {}), **settings}
+    return await company_service.update_company(
+        company_id=company_id,
+        company_data=CompanyUpdate(settings=merged_settings),
+        actor=ActivityActor.from_user(current_user),
+    )
 
 @router.put("/{company_id}", response_model=Company)
 async def update_company(

@@ -101,6 +101,8 @@ class CompanySettings(BaseCamelModel):
         "enabled": False,
         "defaultRateId": None,
     }
+    stock_alert_threshold: int = Field(10, ge=0, alias="stockAlertThreshold")
+    allow_price_modification: bool = Field(True, alias="allowPriceModification")
 
 # Company Subscription Schema
 class CompanySubscription(BaseCamelModel):
