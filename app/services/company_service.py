@@ -17,6 +17,10 @@ from app.schemas.company_role_schema import (
     CompanyRoleDeleteResponse, CompanyRoleAssignResponse, CompanyRoleRemoveResponse
 )
 from app.utils.activity_logger import audit, ActivityActor
+from app.models.file_model import FileRecord
+from app.models.sync_model import SyncLog
+import json
+import re
 import secrets
 from datetime import datetime, timedelta
 
@@ -89,8 +93,8 @@ class CompanyService:
 
     async def create_company(self, company_data: CompanyCreate) -> Company:
         """Create a new company"""
+        session = get_db_session()
         try:
-            session = get_db_session()
             # Create company
             company_dict = company_data.model_dump(by_alias=False)
 
@@ -123,8 +127,11 @@ class CompanyService:
 
             company = CompanyModel(**company_dict)
             session.add(company)
-            await session.commit()
-            await session.refresh(company)
+            await session.flush()
+
+            owner = await session.get(UserModel, company.owner_id)
+            if owner is None or not owner.is_active:
+                raise HTTPException(status_code=404, detail="Company owner not found")
 
             # Ensure company member record exists for owner
             owner_member = CompanyMemberModel(
@@ -138,37 +145,46 @@ class CompanyService:
                 updated_at=now
             )
             session.add(owner_member)
+            owner.current_company_id = company.id
+            owner.updated_at = now
+            session.add(SyncLog(
+                operation="UPDATE", table_name="users", record_id=owner.id,
+                data=json.dumps(owner.to_dict()),
+            ))
+
+            owner_role = None
+            for preset in DEFAULT_COMPANY_ROLES.values():
+                role = UserCompanyRoleModel(company_id=company.id, **preset)
+                session.add(role)
+                if preset["name"] == "Propriétaire":
+                    owner_role = role
+            if owner_role is None:
+                raise RuntimeError("Owner role preset is missing")
+            await session.flush()
+            session.add(UserCompanyRoleAssignmentModel(
+                user_id=owner.id,
+                company_id=company.id,
+                role_id=owner_role.id,
+                assigned_by=owner.id,
+            ))
+
+            # A logo uploaded before company creation is owned by this user.
+            # Move its database linkage to the new company in the same commit.
+            logo_match = re.search(r"/files/([A-Za-z0-9]{15})(?:\?.*)?$", company.logo_url or "")
+            if logo_match:
+                pending_logo = await session.scalar(select(FileRecord).where(
+                    FileRecord.id == logo_match.group(1),
+                    FileRecord.entity_type == "company",
+                    FileRecord.entity_id == f"temp-company-{owner.id}",
+                    FileRecord.field_name == "logo_url",
+                    FileRecord.company_id.is_(None),
+                    FileRecord.is_active == True,
+                ))
+                if pending_logo:
+                    pending_logo.entity_id = company.id
+                    pending_logo.company_id = company.id
+
             await session.commit()
-
-            # Ensure the creator is scoped to this new company
-            await self.user_service.update_user(
-                company.owner_id,
-                {
-                    "current_company_id": company.id,
-                },
-            )
-
-            # Create default company role presets and assign the Owner preset
-            try:
-                await self.create_company_default_presets(company.id)
-                result_role = await session.execute(
-                    select(UserCompanyRoleModel).where(
-                        and_(
-                            UserCompanyRoleModel.company_id == company.id,
-                            UserCompanyRoleModel.name == "Propriétaire"
-                        )
-                    )
-                )
-                owner_role = result_role.scalar_one_or_none()
-                if owner_role:
-                    await self.assign_company_role_to_user(
-                        user_id=company.owner_id,
-                        company_id=company.id,
-                        role_id=owner_role.id,
-                        assigned_by=company.owner_id,
-                    )
-            except Exception:
-                pass
 
             # Get the company with members relationship loaded
             result = await session.execute(
@@ -180,7 +196,11 @@ class CompanyService:
 
             # Convert to schema
             return self._model_to_schema(company_with_members)
+        except HTTPException:
+            await session.rollback()
+            raise
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error creating company: {str(e)}")
 
     async def get_company_by_id(self, company_id: str) -> Optional[Company]:

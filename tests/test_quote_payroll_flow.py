@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from uuid import uuid4
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from sqlalchemy import select, text
 from fastapi import HTTPException
 from fastapi import UploadFile
@@ -20,11 +20,14 @@ os.environ["LOCAL_DB_PATH"] = _test_db.as_posix()
 
 import app.models  # noqa: E402 - register the SQLAlchemy tables
 from app.core.database import Base, LocalAsyncSession, local_async_engine, set_db_session, _apply_non_destructive_alters  # noqa: E402
+from app.core.settings import settings  # noqa: E402
 from app.models.company_model import Company, CompanyMember as CompanyMemberModel, UserCompanyRoleModel, UserCompanyRoleAssignmentModel  # noqa: E402
 from app.models.employee_model import EmployeeModel  # noqa: E402
+from app.models.file_model import FileRecord  # noqa: E402
 from app.models.user_model import User  # noqa: E402
 from app.models.tva_rate_model import TvaRateModel  # noqa: E402
-from app.schemas.company_schema import CompanySettings  # noqa: E402
+from app.schemas.company_schema import CompanyCreate, CompanySettings  # noqa: E402
+from app.schemas.company_role_schema import DEFAULT_COMPANY_ROLES  # noqa: E402
 from app.routes.company_route import update_company_settings  # noqa: E402
 from app.core.dependencies import ensure_company_access, get_company_id  # noqa: E402
 from app.schemas.employee_schema import EmployeePayroll, EmployeePayrollCreate, EmployeeLeaveRequestCreate, EmployeeLeaveRequestUpdate  # noqa: E402
@@ -177,6 +180,40 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(approved.status, "approved")
             self.assertEqual(approved.end_date, "2026-10-11")
             self.assertLessEqual(len(approved.approved_date), 20)
+
+    async def test_company_creation_claims_pending_logo_atomically(self):
+        async with local_async_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            session.add(User(id="company-owner", name="Owner", email="company-owner@example.com", hashed_password="unused"))
+            await session.commit()
+            with tempfile.TemporaryDirectory(prefix="senatrack-company-logo-") as temp_files:
+                files = FileService()
+                files.local_files_path = Path(temp_files)
+                pending_id = "temp-company-company-owner"
+                pending = await files.save_file(
+                    UploadFile(file=io.BytesIO(b"\x89PNG\r\n\x1a\nlogo"), filename="logo.png", headers=Headers({"content-type": "application/octet-stream"})),
+                    "company", pending_id, "logo_url",
+                )
+                company = await CompanyService().create_company(CompanyCreate(
+                    name="New Company", ownerId="company-owner",
+                    logoUrl=f"http://localhost:8000/files/{pending['file_id']}",
+                ))
+                owner = await session.get(User, "company-owner")
+                self.assertEqual(owner.current_company_id, company.id)
+                self.assertIn("Propriétaire", [role.name for role in await CompanyService().get_user_company_roles(owner.id, company.id)])
+                self.assertEqual((await session.get(FileRecord, pending["file_id"])).entity_id, company.id)
+                self.assertEqual(len(await files.get_entity_files("company", company.id, company.id)), 1)
+                self.assertEqual(len(company.members), 1)
+
+                with patch.dict(DEFAULT_COMPANY_ROLES, {}, clear=True):
+                    with self.assertRaises(HTTPException):
+                        await CompanyService().create_company(CompanyCreate(name="Must Roll Back", ownerId="company-owner"))
+                remaining = await session.execute(select(Company).where(Company.name == "Must Roll Back"))
+                self.assertIsNone(remaining.scalar_one_or_none())
+                await session.refresh(owner)
+                self.assertEqual(owner.current_company_id, company.id)
 
     async def test_quote_and_payroll_round_trip(self):
         async with local_async_engine.begin() as connection:
@@ -346,7 +383,7 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             with tempfile.TemporaryDirectory(prefix="senatrack-file-test-") as temp_files:
                 file_service.local_files_path = Path(temp_files)
                 def logo():
-                    return UploadFile(file=io.BytesIO(b"\xff\xd8test-image"), filename="logo.jpg", headers=Headers({"content-type": "image/jpeg"}))
+                    return UploadFile(file=io.BytesIO(b"\xff\xd8\xfftest-image"), filename="logo.jpg", headers=Headers({"content-type": "image/jpeg"}))
 
                 first = await file_service.save_file(logo(), "company", "test-company", "logo_url", "test-company")
                 second = await file_service.save_file(logo(), "company", "test-company", "logo_url", "other-company")
@@ -358,6 +395,24 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(HTTPException) as denied:
                     await file_service.save_file(logo(), "../company", "test-company", "logo_url", "test-company")
                 self.assertEqual(denied.exception.status_code, 400)
+                self.assertEqual(FileRecord.__table__.c.entity_id.type.length, 64)
+                pending_logo = await file_service.save_file(logo(), "company", "temp-company-123456789012345", "logo_url")
+                self.assertTrue(pending_logo["url"].startswith("/files/"))
+                self.assertEqual((await session.get(FileRecord, pending_logo["file_id"])).entity_id, "temp-company-123456789012345")
+                spoofed = UploadFile(file=io.BytesIO(b"%PDF-1.7"), filename="logo.jpg", headers=Headers({"content-type": "image/jpeg"}))
+                with self.assertRaises(HTTPException) as denied:
+                    await file_service.save_file(spoofed, "company", "test-company", "logo_url", "test-company")
+                self.assertEqual(denied.exception.status_code, 400)
+
+                old_logo = await file_service.save_file(logo(), "company", "test-company", "logo_url", "test-company")
+                replacement = UploadFile(file=io.BytesIO(b"\xff\xd8\xffreplacement"), filename="replacement.jpg", headers=Headers({"content-type": "application/octet-stream"}))
+                with patch.object(settings, "DATABASE_MODE", "online"), patch.object(
+                    file_service.upload_service, "upload_to_s3", new=AsyncMock(side_effect=HTTPException(status_code=500, detail="S3 unavailable"))
+                ):
+                    with self.assertRaises(HTTPException):
+                        await file_service.save_file(replacement, "company", "test-company", "logo_url", "test-company")
+                active_files = await file_service.get_entity_files("company", "test-company", "test-company")
+                self.assertEqual([record["file_id"] for record in active_files], [old_logo["file_id"]])
 
             key_service = ActivationKeyService()
             key = await key_service.create_activation_key(ActivationKeyCreate(plan="premium", duration=30, createdBy="test-user"))

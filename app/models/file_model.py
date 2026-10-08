@@ -22,7 +22,7 @@ class FileRecord(Base):
 
     # Generic linkage to any entity field
     entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    entity_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    entity_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     field_name: Mapped[str] = mapped_column(String(50), nullable=False)
 
     # Optional company scoping for multi-tenant entities

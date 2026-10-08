@@ -183,6 +183,14 @@ async def _apply_non_destructive_alters(conn, dialect: str):
     Keep columns nullable to avoid destructive changes. Backfill local with COMPANY_ID.
     """
     company_id = settings.COMPANY_ID
+    # Pending company logos use `temp-company-<user id>`, which is longer than
+    # the original file_records.entity_id VARCHAR(20) on PostgreSQL.
+    if dialect == "postgresql":
+        file_columns = await conn.run_sync(lambda sync_conn: inspect(sync_conn).get_columns("file_records"))
+        entity_column = next(column for column in file_columns if column["name"] == "entity_id")
+        entity_length = getattr(entity_column["type"], "length", None)
+        if entity_length is not None and entity_length < 64:
+            await conn.execute(text("ALTER TABLE file_records ALTER COLUMN entity_id TYPE VARCHAR(64)"))
     # Quote/form totals were added after the first deployments.
     for column in ("discount", "tva"):
         if dialect == "postgresql":

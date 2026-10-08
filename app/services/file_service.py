@@ -1,5 +1,4 @@
 import os
-import mimetypes
 import hashlib
 import re
 from pathlib import Path
@@ -8,7 +7,7 @@ from datetime import datetime
 import aiofiles
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from app.core.settings import settings
 from app.core.database import get_db_session
@@ -22,17 +21,30 @@ class FileService:
     def __init__(self):
         self.upload_service = UploadService()
         self.local_files_path = Path(settings.LOCAL_FILES_PATH)
-        self.local_files_path.mkdir(exist_ok=True)
 
-    async def _validate_file(self, file: UploadFile):
+    async def _validate_file(self, file: UploadFile) -> tuple[bytes, str]:
         if not file.filename:
             raise HTTPException(status_code=400, detail="No filename provided")
-        content = await file.read()
-        await file.seek(0)
+        if len(file.filename) > 255:
+            raise HTTPException(status_code=400, detail="Filename too long")
+        content = await file.read(settings.MAX_FILE_SIZE + 1)
         if len(content) > settings.MAX_FILE_SIZE:
             raise HTTPException(status_code=400, detail="File too large")
-        if file.content_type not in settings.ALLOWED_FILE_TYPES:
+        # Browser MIME types are not trustworthy and can be missing for photos
+        # imported from mobile devices. Validate the actual image signature.
+        if content.startswith(b"\xff\xd8\xff"):
+            content_type = "image/jpeg"
+        elif content.startswith(b"\x89PNG\r\n\x1a\n"):
+            content_type = "image/png"
+        elif content.startswith((b"GIF87a", b"GIF89a")):
+            content_type = "image/gif"
+        elif content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+            content_type = "image/webp"
+        else:
+            raise HTTPException(status_code=400, detail="File is not a supported image")
+        if content_type not in settings.ALLOWED_FILE_TYPES:
             raise HTTPException(status_code=400, detail="File type not allowed")
+        return content, content_type
 
     def _generate_hash(self, content: bytes, entity_id: str, field_name: str, company_id: Optional[str]) -> str:
         h = hashlib.md5()
@@ -66,8 +78,7 @@ class FileService:
         - online: Direct upload to S3
         - offline: Save to local filesystem only
         """
-        await self._validate_file(file)
-        content = await file.read()
+        content, content_type = await self._validate_file(file)
         storage_dir = self._entity_storage_dir(entity_type, entity_id, field_name, company_id)
         file_hash = self._generate_hash(content, entity_id, field_name, company_id)
 
@@ -84,12 +95,9 @@ class FileService:
                 await self._deactivate_existing(entity_type, entity_id, field_name, company_id)
             return await self._clone_link(existing_file, entity_type, entity_id, field_name, company_id)
 
-        if replace_existing:
-            await self._deactivate_existing(entity_type, entity_id, field_name, company_id)
-
         # Determine storage based on DATABASE_MODE
         mode = (settings.DATABASE_MODE or "offline").lower()
-        filename = self._unique_filename(file.content_type, file_hash)
+        filename = self._unique_filename(content_type, file_hash)
         file_path = None
         remote_url = None
         sync_status = "not_applicable"
@@ -101,7 +109,7 @@ class FileService:
             remote_url = await self.upload_service.upload_to_s3(
                 file_content=content,
                 destination_path=s3_path,
-                content_type=file.content_type or "application/octet-stream",
+                content_type=content_type,
             )
             sync_status = "synced"
             storage_mode = "s3"
@@ -115,6 +123,9 @@ class FileService:
             sync_status = "pending"
             storage_mode = "local"
 
+        if replace_existing:
+            await self._deactivate_existing(entity_type, entity_id, field_name, company_id)
+
         # Create DB record
         record = await self._create_record(
             filename=filename,
@@ -122,7 +133,7 @@ class FileService:
             file_path=file_path,
             remote_url=remote_url,
             file_size=len(content),
-            content_type=file.content_type or mimetypes.guess_type(file.filename)[0] or "application/octet-stream",
+            content_type=content_type,
             file_hash=file_hash,
             entity_type=entity_type,
             entity_id=entity_id,
@@ -134,7 +145,7 @@ class FileService:
 
         return {
             "file_id": record.id,
-            "url": f"/api/files/{record.id}",
+            "url": f"/files/{record.id}",
             "filename": filename,
             "original_filename": record.original_filename,
             "file_size": record.file_size,
@@ -156,7 +167,6 @@ class FileService:
         )
         for rec in rows.scalars().all():
             rec.is_active = False
-        await session.commit()
 
     async def _clone_link(
         self,
@@ -187,7 +197,7 @@ class FileService:
         await session.refresh(clone)
         return {
             "file_id": clone.id,
-            "url": f"/api/files/{clone.id}",
+            "url": f"/files/{clone.id}",
             "filename": clone.filename,
             "original_filename": clone.original_filename,
             "file_size": clone.file_size,
@@ -255,7 +265,7 @@ class FileService:
         files = result.scalars().all()
         return [{
             "file_id": f.id,
-            "url": f"/api/files/{f.id}",
+            "url": f"/files/{f.id}",
             "filename": f.filename,
             "original_filename": f.original_filename,
             "field_name": f.field_name,
@@ -286,7 +296,7 @@ class FileService:
                 FileRecord.id != rec.id,
             )
         )
-        if not other.scalar_one_or_none():
+        if not other.first():
             # delete local file
             try:
                 if rec.file_path and os.path.exists(rec.file_path):
