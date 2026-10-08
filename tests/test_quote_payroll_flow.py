@@ -83,6 +83,14 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
         await local_async_engine.dispose()
         _test_db.unlink(missing_ok=True)
 
+    async def test_storage_failures_do_not_expose_provider_details(self):
+        storage = UploadService()
+        with patch.object(storage.s3_session, "client", side_effect=RuntimeError("private provider detail")):
+            with self.assertRaises(HTTPException) as failure:
+                await storage.upload_to_s3(b"image", "company/logo.png", "image/png")
+        self.assertEqual(failure.exception.status_code, 503)
+        self.assertNotIn("private provider detail", failure.exception.detail)
+
     async def test_purchase_order_numbers_are_unique_per_company(self):
         async with local_async_engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)

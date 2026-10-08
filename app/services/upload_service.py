@@ -71,7 +71,7 @@ class UploadService:
         except Exception as e:
             logger.error(f"S3 upload operation failed: {str(e)}")
             raise HTTPException(
-                status_code=500, detail=f"S3 upload operation failed: {str(e)}"
+                status_code=503, detail="File storage is temporarily unavailable"
             )
 
     def upload_file(
@@ -130,7 +130,7 @@ class UploadService:
             raise
         except Exception as e:
             logger.error(f"S3 upload operation failed (sync): {str(e)}")
-            raise HTTPException(status_code=500, detail=f"S3 upload operation failed: {str(e)}")
+            raise HTTPException(status_code=503, detail="File storage is temporarily unavailable")
 
     async def delete_from_s3(self, s3_key: str) -> bool:
         """
