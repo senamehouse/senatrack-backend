@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import text
+from sqlalchemy import text, inspect
 from typing import AsyncGenerator, Optional
 from contextvars import ContextVar
 from app.core.settings import settings
@@ -213,37 +213,20 @@ async def _apply_non_destructive_alters(conn, dialect: str):
         "company_invitations","user_roles","user_role_assignments","user_company_roles","user_company_role_assignments"
     ]
 
-    if dialect == "sqlite":
-        for t in tables:
-            try:
-                # Add column if not exists (SQLite supports ADD COLUMN without IF NOT EXISTS prior to 3.35; tolerant try)
-                await conn.execute(text(f"ALTER TABLE {t} ADD COLUMN company_id VARCHAR(64)"))
-            except Exception:
-                pass
-            # best-effort backfill for local
+    existing_tables = set(await conn.run_sync(lambda sync_conn: inspect(sync_conn).get_table_names()))
+    for table_name in tables:
+        if table_name not in existing_tables:
+            continue
+        # Names come from the fixed list above; quote identifiers for both dialects.
+        quoted_table = conn.dialect.identifier_preparer.quote(table_name)
+        if dialect == "postgresql":
+            await conn.execute(text(f"ALTER TABLE {quoted_table} ADD COLUMN IF NOT EXISTS company_id VARCHAR(64)"))
+        elif dialect == "sqlite":
+            columns = await conn.execute(text(f"PRAGMA table_info({quoted_table})"))
+            if "company_id" not in {column[1] for column in columns}:
+                await conn.execute(text(f"ALTER TABLE {quoted_table} ADD COLUMN company_id VARCHAR(64)"))
             if company_id:
-                try:
-                    await conn.execute(text(f"UPDATE {t} SET company_id = :cid WHERE company_id IS NULL"), {"cid": company_id})
-                except Exception:
-                    pass
-    elif dialect == "postgresql":
-        for t in tables:
-            try:
-                await conn.execute(text(
-                    """
-                    DO $$
-                    BEGIN
-                        IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns 
-                            WHERE table_name = :t AND column_name = 'company_id'
-                        ) THEN
-                            EXECUTE format('ALTER TABLE %I ADD COLUMN company_id TEXT', :t);
-                        END IF;
-                    END$$;
-                    """
-                ), {"t": t})
-            except Exception:
-                pass
+                await conn.execute(text(f"UPDATE {quoted_table} SET company_id = :cid WHERE company_id IS NULL"), {"cid": company_id})
 
 # Database configuration and setup only
 # All database operations are handled by services

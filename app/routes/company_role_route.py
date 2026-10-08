@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.dependencies import get_current_user, get_company_id
+from app.core.dependencies import get_current_user, require_company_member, require_company_owner
 from app.core.database import get_async_db
 from app.schemas.user_schema import User
 from app.schemas.company_role_schema import (
@@ -12,10 +12,10 @@ from app.schemas.company_role_schema import (
 from app.services.company_service import CompanyService
 from app.utils.activity_logger import ActivityActor
 
-router = APIRouter(prefix="/companies", tags=["Company Roles"])
+router = APIRouter(prefix="/companies", tags=["Company Roles"], dependencies=[Depends(require_company_member)])
 company_service = CompanyService()
 
-@router.post("/{company_id}/roles/", response_model=UserCompanyRole, status_code=status.HTTP_201_CREATED)
+@router.post("/{company_id}/roles/", response_model=UserCompanyRole, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_company_owner)])
 async def create_company_role(
     company_id: str,
     role_data: UserCompanyRoleCreate,
@@ -23,7 +23,6 @@ async def create_company_role(
     current_user: User = Depends(get_current_user)
 ):
     """Create a new company role"""
-    # TODO: Add company permission check
     return await company_service.create_company_role(company_id=company_id, role_data=role_data, actor=ActivityActor.from_user(current_user))
 
 @router.get("/{company_id}/roles/", response_model=List[UserCompanyRole])
@@ -57,7 +56,7 @@ async def get_company_role(
         raise HTTPException(status_code=404, detail="Role not found")
     return role
 
-@router.put("/{company_id}/roles/{role_id}", response_model=UserCompanyRole)
+@router.put("/{company_id}/roles/{role_id}", response_model=UserCompanyRole, dependencies=[Depends(require_company_owner)])
 async def update_company_role(
     company_id: str,
     role_id: str,
@@ -66,10 +65,9 @@ async def update_company_role(
     current_user: User = Depends(get_current_user)
 ):
     """Update a company role"""
-    # TODO: Add company permission check
     return await company_service.update_company_role(company_id=company_id, role_id=role_id, role_data=role_data, actor=ActivityActor.from_user(current_user))
 
-@router.delete("/{company_id}/roles/{role_id}", response_model=CompanyRoleDeleteResponse)
+@router.delete("/{company_id}/roles/{role_id}", response_model=CompanyRoleDeleteResponse, dependencies=[Depends(require_company_owner)])
 async def delete_company_role(
     company_id: str,
     role_id: str,
@@ -77,10 +75,9 @@ async def delete_company_role(
     current_user: User = Depends(get_current_user)
 ):
     """Delete a company role"""
-    # TODO: Add company permission check
     return await company_service.delete_company_role(company_id=company_id, role_id=role_id, actor=ActivityActor.from_user(current_user))
 
-@router.post("/{company_id}/roles/{role_id}/assign", response_model=CompanyRoleAssignResponse)
+@router.post("/{company_id}/roles/{role_id}/assign", response_model=CompanyRoleAssignResponse, dependencies=[Depends(require_company_owner)])
 async def assign_company_role_to_user(
     company_id: str,
     role_id: str,
@@ -89,10 +86,9 @@ async def assign_company_role_to_user(
     current_user: User = Depends(get_current_user)
 ):
     """Assign a company role to a user"""
-    # TODO: Add company permission check
     return await company_service.assign_company_role_to_user(user_id=assignment_data.user_id, company_id=company_id, role_id=role_id, assigned_by=current_user.id, actor=ActivityActor.from_user(current_user))
 
-@router.delete("/{company_id}/roles/{role_id}/assign/{user_id}", response_model=CompanyRoleRemoveResponse)
+@router.delete("/{company_id}/roles/{role_id}/assign/{user_id}", response_model=CompanyRoleRemoveResponse, dependencies=[Depends(require_company_owner)])
 async def remove_company_role_from_user(
     company_id: str,
     role_id: str,
@@ -101,7 +97,6 @@ async def remove_company_role_from_user(
     current_user: User = Depends(get_current_user)
 ):
     """Remove a company role from a user"""
-    # TODO: Add company permission check
     return await company_service.remove_company_role_from_user(user_id=user_id, company_id=company_id, role_id=role_id, actor=ActivityActor.from_user(current_user))
 
 @router.get("/{company_id}/users/{user_id}/roles", response_model=List[UserCompanyRole])
@@ -137,13 +132,12 @@ async def check_company_permission(
         user_id, company_id, permission_data.permission
     )
 
-@router.post("/{company_id}/create-presets", response_model=List[UserCompanyRole])
+@router.post("/{company_id}/create-presets", response_model=List[UserCompanyRole], dependencies=[Depends(require_company_owner)])
 async def create_company_default_presets(
     company_id: str,
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Create default company role presets"""
-    # TODO: Add company permission check
     return await company_service.create_company_default_presets(company_id)
 

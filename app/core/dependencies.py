@@ -6,6 +6,10 @@ from app.services.user_service import UserService
 from app.services.company_service import CompanyService
 from app.schemas.user_schema import User
 from app.core.settings import settings
+from app.core.database import get_async_db
+from app.models.company_model import Company as CompanyModel, CompanyMember as CompanyMemberModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Security scheme
 security = HTTPBearer()
@@ -18,6 +22,7 @@ company_service = CompanyService()
 
 async def get_current_user(
     request: Request,
+    session: AsyncSession = Depends(get_async_db),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security)
 ) -> User:
     """Dependency to get current authenticated user - checks session cookie first, then Bearer token"""
@@ -60,6 +65,7 @@ async def get_current_verified_user(current_user: User = Depends(get_current_act
 # Optional authentication (doesn't raise error if no token)
 async def get_current_user_optional(
     request: Request,
+    session: AsyncSession = Depends(get_async_db),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security)
 ) -> User | None:
     """Optional dependency to get current user (returns None if not authenticated) - checks cookies first"""
@@ -83,25 +89,68 @@ async def get_current_user_optional(
 # Company scoping - explicit header dependency for Swagger docs
 async def get_company_id(
     request: Request,
-    x_company_id: Optional[str] = Header(None, alias="X-Company-Id", description="Company ID for tenant scoping")
+    x_company_id: Optional[str] = Header(None, alias="X-Company-Id", description="Company ID for tenant scoping"),
+    session: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ) -> str:
-    """Dependency to get company ID from cookie first, then X-Company-Id header"""
+    """Resolve and authorize the selected company for the authenticated user."""
     # Check cookie first
-    company_id = request.cookies.get("companyId") or x_company_id or settings.COMPANY_ID
+    company_id = x_company_id or request.cookies.get("companyId") or settings.COMPANY_ID
     if not company_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
             detail="Company ID is required (set via cookie or X-Company-Id header)"
         )
+    await ensure_company_access(company_id, current_user, session)
     return company_id
+
+
+async def ensure_company_access(
+    company_id: str, current_user: User, session: AsyncSession, *, owner_only: bool = False
+) -> None:
+    """Reject cross-company access even when a caller forges the company cookie/header."""
+    company = await session.scalar(select(CompanyModel).where(
+        CompanyModel.id == company_id, CompanyModel.is_active == True,
+    ))
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    if company.owner_id == current_user.id:
+        return
+    if not owner_only and "admin.access" in current_user.platform_permissions:
+        return
+    if not owner_only:
+        membership = await session.scalar(select(CompanyMemberModel.id).where(
+            CompanyMemberModel.company_id == company_id,
+            CompanyMemberModel.user_id == current_user.id,
+            CompanyMemberModel.is_active == True,
+        ))
+        if membership is not None:
+            return
+    raise HTTPException(status_code=403, detail="Company access denied")
+
+
+async def require_company_member(
+    company_id: str,
+    session: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    await ensure_company_access(company_id, current_user, session)
+
+
+async def require_company_owner(
+    company_id: str,
+    session: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    await ensure_company_access(company_id, current_user, session, owner_only=True)
 
 # Optional company scoping (for endpoints that can work without it)
 async def get_company_id_optional(
     request: Request,
     x_company_id: Optional[str] = Header(None, alias="X-Company-Id", description="Company ID for tenant scoping")
 ) -> Optional[str]:
-    """Optional dependency to get company ID from cookie first, then X-Company-Id header"""
-    return request.cookies.get("companyId") or x_company_id or settings.COMPANY_ID
+    """Optional dependency to get company ID from the explicit header, then cookie."""
+    return x_company_id or request.cookies.get("companyId") or settings.COMPANY_ID
 
 # Permission-based dependencies
 async def require_permission(permission: str):

@@ -1,6 +1,7 @@
 import os
 import mimetypes
 import hashlib
+import re
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime
@@ -33,19 +34,23 @@ class FileService:
         if file.content_type not in settings.ALLOWED_FILE_TYPES:
             raise HTTPException(status_code=400, detail="File type not allowed")
 
-    def _generate_hash(self, content: bytes, entity_id: str, field_name: str) -> str:
+    def _generate_hash(self, content: bytes, entity_id: str, field_name: str, company_id: Optional[str]) -> str:
         h = hashlib.md5()
         h.update(content)
         h.update(entity_id.encode())
         h.update(field_name.encode())
+        h.update((company_id or "").encode())
         return h.hexdigest()
 
-    def _unique_filename(self, original: str, file_hash: str) -> str:
-        ext = Path(original).suffix or mimetypes.guess_extension(mimetypes.guess_type(original)[0] or "") or ""
-        return f"{file_hash}{ext}"
+    def _unique_filename(self, content_type: str, file_hash: str) -> str:
+        extensions = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}
+        return f"{file_hash}{extensions[content_type]}"
 
-    def _entity_storage_dir(self, entity_type: str, entity_id: str, field_name: str) -> Path:
-        return self.local_files_path / entity_type / entity_id / field_name
+    def _entity_storage_dir(self, entity_type: str, entity_id: str, field_name: str, company_id: Optional[str] = None) -> Path:
+        segments = (company_id or "unassigned", entity_type, entity_id, field_name)
+        if any(not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", segment) for segment in segments):
+            raise HTTPException(status_code=400, detail="Invalid file location")
+        return self.local_files_path.joinpath(*segments)
 
     async def save_file(
         self,
@@ -63,27 +68,28 @@ class FileService:
         """
         await self._validate_file(file)
         content = await file.read()
-        file_hash = self._generate_hash(content, entity_id, field_name)
+        storage_dir = self._entity_storage_dir(entity_type, entity_id, field_name, company_id)
+        file_hash = self._generate_hash(content, entity_id, field_name, company_id)
 
         # try dedupe by hash
         session = get_db_session()
         existing = await session.execute(
-            select(FileRecord).where(FileRecord.file_hash == file_hash, FileRecord.is_active == True).limit(1)
+            select(FileRecord).where(FileRecord.file_hash == file_hash, FileRecord.company_id == company_id, FileRecord.is_active == True).limit(1)
         )
         existing_file = existing.scalar_one_or_none()
 
         if existing_file:
             # Link to existing file, optionally disable previous links for same field
             if replace_existing:
-                await self._deactivate_existing(entity_type, entity_id, field_name)
+                await self._deactivate_existing(entity_type, entity_id, field_name, company_id)
             return await self._clone_link(existing_file, entity_type, entity_id, field_name, company_id)
 
         if replace_existing:
-            await self._deactivate_existing(entity_type, entity_id, field_name)
+            await self._deactivate_existing(entity_type, entity_id, field_name, company_id)
 
         # Determine storage based on DATABASE_MODE
         mode = (settings.DATABASE_MODE or "offline").lower()
-        filename = self._unique_filename(file.filename, file_hash)
+        filename = self._unique_filename(file.content_type, file_hash)
         file_path = None
         remote_url = None
         sync_status = "not_applicable"
@@ -91,7 +97,7 @@ class FileService:
 
         if mode == "online":
             # Online mode: Upload directly to S3
-            s3_path = f"{entity_type}/{entity_id}/{field_name}/{filename}"
+            s3_path = f"{company_id or 'unassigned'}/{entity_type}/{entity_id}/{field_name}/{filename}"
             remote_url = await self.upload_service.upload_to_s3(
                 file_content=content,
                 destination_path=s3_path,
@@ -101,7 +107,6 @@ class FileService:
             storage_mode = "s3"
         else:
             # Offline mode: Save to local filesystem only
-            storage_dir = self._entity_storage_dir(entity_type, entity_id, field_name)
             storage_dir.mkdir(parents=True, exist_ok=True)
             file_path = storage_dir / filename
             with open(file_path, "wb") as f:
@@ -138,13 +143,14 @@ class FileService:
             "sync_status": record.sync_status,
         }
 
-    async def _deactivate_existing(self, entity_type: str, entity_id: str, field_name: str):
+    async def _deactivate_existing(self, entity_type: str, entity_id: str, field_name: str, company_id: Optional[str]):
         session = get_db_session()
         rows = await session.execute(
             select(FileRecord).where(
                 FileRecord.entity_type == entity_type,
                 FileRecord.entity_id == entity_id,
                 FileRecord.field_name == field_name,
+                FileRecord.company_id == company_id,
                 FileRecord.is_active == True,
             )
         )
@@ -235,13 +241,14 @@ class FileService:
         r = await session.execute(select(FileRecord).where(FileRecord.id == file_id))
         return r.scalar_one_or_none()
 
-    async def get_entity_files(self, entity_type: str, entity_id: str) -> list[Dict[str, Any]]:
+    async def get_entity_files(self, entity_type: str, entity_id: str, company_id: str) -> list[Dict[str, Any]]:
         """Get all active files for a specific entity"""
         session = get_db_session()
         result = await session.execute(
             select(FileRecord).where(
                 FileRecord.entity_type == entity_type,
                 FileRecord.entity_id == entity_id,
+                FileRecord.company_id == company_id,
                 FileRecord.is_active == True,
             )
         )
@@ -259,13 +266,13 @@ class FileService:
             "created_at": f.created_at.isoformat() if f.created_at else None,
         } for f in files]
 
-    async def delete_file(self, file_id: str) -> bool:
+    async def delete_file(self, file_id: str, company_id: str) -> bool:
         """
         Delete a file record. Physical file deletion occurs only if no other
         active records reference the same file hash.
         """
         session = get_db_session()
-        r = await session.execute(select(FileRecord).where(FileRecord.id == file_id))
+        r = await session.execute(select(FileRecord).where(FileRecord.id == file_id, FileRecord.company_id == company_id))
         rec = r.scalar_one_or_none()
         if not rec:
             return False
@@ -328,7 +335,7 @@ class FileService:
                     content = await f.read()
                 
                 # Upload to S3
-                s3_path = f"{rec.entity_type}/{rec.entity_id}/{rec.field_name}/{rec.filename}"
+                s3_path = f"{rec.company_id or 'unassigned'}/{rec.entity_type}/{rec.entity_id}/{rec.field_name}/{rec.filename}"
                 remote_url = await self.upload_service.upload_to_s3(
                     file_content=content,
                     destination_path=s3_path,
@@ -386,7 +393,7 @@ class FileService:
                         content = await response.read()
                     
                     # Save to local
-                    storage_dir = self._entity_storage_dir(rec.entity_type, rec.entity_id, rec.field_name)
+                    storage_dir = self._entity_storage_dir(rec.entity_type, rec.entity_id, rec.field_name, rec.company_id)
                     storage_dir.mkdir(parents=True, exist_ok=True)
                     file_path = storage_dir / rec.filename
                     with open(file_path, "wb") as f:

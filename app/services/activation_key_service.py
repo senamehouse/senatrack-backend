@@ -3,6 +3,7 @@ from sqlalchemy import select, update, delete, and_, desc
 from fastapi import HTTPException
 from app.core.database import get_db_session
 from app.models.activation_key_model import ActivationKey
+from app.models.company_model import Company
 from app.schemas.activation_key_schema import (
     ActivationKeyCreate, ActivationKeyUpdate, ActivationKeyStats
 )
@@ -177,30 +178,41 @@ class ActivationKeyService:
                     "message": "Cette clé d'activation a déjà été utilisée"
                 }
 
-            # Use the activation key
+            company = await session.scalar(select(Company).where(Company.id == company_id, Company.is_active == True))
+            if company is None:
+                return {"success": False, "message": "Entreprise introuvable"}
+
+            # Redeem once and extend the company subscription in the same transaction.
             now = datetime.utcnow()
-            await session.execute(
-                update(ActivationKey).where(ActivationKey.id == activation_key.id).values(
+            redeemed = await session.execute(
+                update(ActivationKey).where(
+                    ActivationKey.id == activation_key.id,
+                    ActivationKey.status == "active",
+                    ActivationKey.used_by.is_(None),
+                ).values(
                     status="used",
                     used_by=company_id,
                     used_at=now,
                     updated_at=now
                 )
             )
+            if redeemed.rowcount != 1:
+                await session.rollback()
+                return {"success": False, "message": "Cette clé d'activation a déjà été utilisée"}
+            subscription = dict(company.subscription or {})
+            previous_end = subscription.get("accessEndDate") or subscription.get("access_end_date")
+            end_date = datetime.fromisoformat(previous_end) if previous_end else now
+            subscription.pop("access_end_date", None)
+            subscription.update({"plan": activation_key.plan, "accessEndDate": (max(now, end_date) + timedelta(days=activation_key.duration)).isoformat()})
+            company.subscription = subscription
+            company.updated_at = now
             await session.commit()
+            await session.refresh(activation_key)
 
             return {
                 "success": True,
                 "message": f"Accès étendu de {activation_key.duration} jours avec le plan {activation_key.plan}",
-                "activation_key": {
-                    "id": activation_key.id,
-                    "key": activation_key.key,
-                    "plan": activation_key.plan,
-                    "duration": activation_key.duration,
-                    "status": "used",
-                    "used_by": company_id,
-                    "used_at": now.isoformat()
-                }
+                "activation_key": activation_key.to_dict(),
             }
         except Exception as e:
             return {

@@ -53,6 +53,40 @@ class CompanyService:
 
         return Company(**company_schema_dict)
 
+    async def get_all_companies(self, limit: int = 100) -> List[Company]:
+        session = get_db_session()
+        result = await session.execute(
+            select(CompanyModel).options(selectinload(CompanyModel.members))
+            .order_by(CompanyModel.created_at.desc()).limit(limit)
+        )
+        return [self._model_to_schema(company) for company in result.scalars().all()]
+
+    async def update_company_plan(self, company_id: str, plan: str) -> Company:
+        session = get_db_session()
+        company = await session.scalar(select(CompanyModel).where(CompanyModel.id == company_id))
+        if company is None:
+            raise HTTPException(status_code=404, detail="Company not found")
+        subscription = dict(company.subscription or {})
+        subscription["plan"] = plan
+        company.subscription = subscription
+        company.updated_at = datetime.utcnow()
+        await session.commit()
+        updated = await self.get_company_by_id(company_id)
+        return updated
+
+    async def cancel_company_subscription(self, company_id: str) -> Company:
+        session = get_db_session()
+        company = await session.scalar(select(CompanyModel).where(CompanyModel.id == company_id))
+        if company is None:
+            raise HTTPException(status_code=404, detail="Company not found")
+        subscription = dict(company.subscription or {})
+        subscription.pop("access_end_date", None)
+        subscription["accessEndDate"] = datetime.utcnow().isoformat()
+        company.subscription = subscription
+        company.updated_at = datetime.utcnow()
+        await session.commit()
+        return await self.get_company_by_id(company_id)
+
     async def create_company(self, company_data: CompanyCreate) -> Company:
         """Create a new company"""
         try:
@@ -341,8 +375,8 @@ class CompanyService:
 
             now = datetime.utcnow()
             for company in companies:
-                if company.subscription and company.subscription.get("access_end_date"):
-                    access_end = datetime.fromisoformat(company.subscription["access_end_date"])
+                if company.subscription and (company.subscription.get("accessEndDate") or company.subscription.get("access_end_date")):
+                    access_end = datetime.fromisoformat(company.subscription.get("accessEndDate") or company.subscription["access_end_date"])
                     if now <= access_end:
                         active_subscriptions += 1
                     else:
@@ -368,13 +402,14 @@ class CompanyService:
             now = datetime.utcnow()
             current_end_date = now
 
-            if company.subscription and company.subscription.get("access_end_date"):
-                current_end_date = datetime.fromisoformat(company.subscription["access_end_date"])
+            if company.subscription and (company.subscription.get("accessEndDate") or company.subscription.get("access_end_date")):
+                current_end_date = datetime.fromisoformat(company.subscription.get("accessEndDate") or company.subscription["access_end_date"])
 
             new_end_date = max(now, current_end_date) + timedelta(days=days)
 
-            updated_subscription = company.subscription or {}
-            updated_subscription["access_end_date"] = new_end_date.isoformat()
+            updated_subscription = dict(company.subscription or {})
+            updated_subscription.pop("access_end_date", None)
+            updated_subscription["accessEndDate"] = new_end_date.isoformat()
 
             await session.execute(
                 update(CompanyModel).where(CompanyModel.id == company_id).values(
@@ -664,6 +699,19 @@ class CompanyService:
         """Assign a company role to a user and return response"""
         try:
             session = get_db_session()
+            role = await session.scalar(select(UserCompanyRoleModel).where(
+                UserCompanyRoleModel.id == role_id,
+                UserCompanyRoleModel.company_id == company_id,
+            ))
+            if role is None:
+                raise HTTPException(status_code=404, detail="Role not found")
+            member = await session.scalar(select(CompanyMemberModel.id).where(
+                CompanyMemberModel.company_id == company_id,
+                CompanyMemberModel.user_id == user_id,
+                CompanyMemberModel.is_active == True,
+            ))
+            if member is None:
+                raise HTTPException(status_code=403, detail="User is not an active company member")
             # Check if assignment already exists
             result = await session.execute(
                 select(UserCompanyRoleAssignmentModel).where(
@@ -746,7 +794,8 @@ class CompanyService:
                 .where(
                     and_(
                         UserCompanyRoleAssignmentModel.user_id == user_id,
-                        UserCompanyRoleAssignmentModel.company_id == company_id
+                        UserCompanyRoleAssignmentModel.company_id == company_id,
+                        UserCompanyRoleModel.company_id == company_id,
                     )
                 )
                 .order_by(UserCompanyRoleModel.name)

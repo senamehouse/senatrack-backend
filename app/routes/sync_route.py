@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends
+from app.core.dependencies import require_admin_access
 from app.services.sync_service import SyncService
 
-router = APIRouter(prefix="/api/sync", tags=["Sync"])
+router = APIRouter(prefix="/api/sync", tags=["Sync"], dependencies=[Depends(require_admin_access)])
 svc = SyncService()
 
 @router.post("/to-online")

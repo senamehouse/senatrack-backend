@@ -8,7 +8,7 @@ class ActivationKeyBase(BaseCamelModel):
     """Base activation key schema"""
     
     key: str = Field(..., min_length=1, max_length=255)
-    plan: str = Field(..., pattern="^(free_trial|basic|premium|enterprise)$")
+    plan: str = Field(..., pattern="^(free_trial|basic|standard|premium|enterprise)$")
     duration: int = Field(..., gt=0)  # Duration in days
     status: str = Field(default="active", pattern="^(active|used|expired|cancelled)$")
     created_by: str = Field(..., alias="createdBy")
@@ -17,9 +17,9 @@ class ActivationKeyBase(BaseCamelModel):
 class ActivationKeyCreate(BaseCamelModel):
     """Schema for creating an activation key"""
     
-    plan: str = Field(..., pattern="^(free_trial|basic|premium|enterprise)$")
+    plan: str = Field(..., pattern="^(free_trial|basic|standard|premium|enterprise)$")
     duration: int = Field(..., gt=0)  # Duration in days
-    created_by: str = Field(..., alias="createdBy")
+    created_by: Optional[str] = Field(None, alias="createdBy")
     expires_at: Optional[datetime] = Field(None, alias="expiresAt")
     notes: Optional[str] = None
 
@@ -45,7 +45,7 @@ class ActivationKeyUsage(BaseCamelModel):
     
     key: str = Field(..., min_length=1, max_length=255)
     company_id: str = Field(..., alias="companyId")
-    user_id: str = Field(..., alias="userId")
+    user_id: Optional[str] = Field(None, alias="userId")
 
 class ActivationKeyUsageResponse(BaseCamelModel):
     """Response schema for activation key usage"""

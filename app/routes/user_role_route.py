@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, require_admin_access
 from app.core.database import get_async_db
 from app.schemas.user_schema import User
 from app.schemas.user_role_schema import (
@@ -11,7 +11,7 @@ from app.schemas.user_role_schema import (
 from app.services.user_service import UserService
 from app.utils.activity_logger import ActivityActor
 
-router = APIRouter(prefix="/user-roles", tags=["User Roles"])
+router = APIRouter(prefix="/user-roles", tags=["User Roles"], dependencies=[Depends(require_admin_access)])
 user_service = UserService()
 
 @router.post("/", response_model=UserRole, status_code=status.HTTP_201_CREATED)

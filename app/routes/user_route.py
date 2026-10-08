@@ -2,32 +2,34 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 from app.schemas.user_schema import User, UserUpdate
 from app.services.user_service import UserService
-from app.core.dependencies import get_current_user, get_current_active_user
+from app.core.dependencies import get_current_active_user, require_admin_access
 
 router = APIRouter(prefix="/users", tags=["Users"])
 user_service = UserService()
 
 @router.get("/", response_model=List[User])
-async def get_all_users(current_user: User = Depends(get_current_active_user)):
-    """Get all users (requires authentication)"""
+async def get_all_users(current_user: User = Depends(require_admin_access)):
+    """Get all users (platform admin only)"""
     return await user_service.get_all_users()
+
+@router.get("/count")
+async def get_users_count(current_user: User = Depends(require_admin_access)):
+    """Get users count (platform admin only)"""
+    count = await user_service.get_users_count()
+    return {"count": count}
 
 @router.get("/{user_id}", response_model=User)
 async def get_user(
     user_id: str, 
     current_user: User = Depends(get_current_active_user)
 ):
-    """Get user by ID (requires authentication)"""
+    """Get your own profile or, as an admin, another user."""
+    if current_user.id != user_id and "admin.access" not in current_user.platform_permissions:
+        raise HTTPException(status_code=403, detail="User access denied")
     user = await user_service.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
-
-@router.get("/count")
-async def get_users_count(current_user: User = Depends(get_current_active_user)):
-    """Get users count (requires authentication)"""
-    count = await user_service.get_users_count()
-    return {"count": count}
 
 @router.put("/{user_id}", response_model=User)
 async def update_user(

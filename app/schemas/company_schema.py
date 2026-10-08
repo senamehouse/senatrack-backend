@@ -53,7 +53,7 @@ class CompanyBase(BaseCamelModel):
 class CompanyCreate(CompanyBase):
     """Schema for creating a company"""
     
-    owner_id: str = Field(..., alias="ownerId")
+    owner_id: Optional[str] = Field(None, alias="ownerId")
 
 class CompanyUpdate(BaseCamelModel):
     """Schema for updating a company"""
@@ -71,7 +71,6 @@ class CompanyUpdate(BaseCamelModel):
     tax_id: Optional[str] = Field(None, max_length=100, alias="taxId")
     registration_number: Optional[str] = Field(None, max_length=100, alias="registrationNumber")
     settings: Optional[Dict[str, Any]] = None
-    subscription: Optional[Dict[str, Any]] = None
 
 class Company(CompanyBase):
     """Complete company schema"""
@@ -108,10 +107,17 @@ class CompanySettings(BaseCamelModel):
 class CompanySubscription(BaseCamelModel):
     """Company subscription schema"""
     
-    plan: str = Field(..., pattern="^(free_trial|basic|premium|enterprise)$")
+    plan: str = Field(..., pattern="^(free_trial|basic|standard|premium|enterprise)$")
     access_end_date: str = Field(..., alias="accessEndDate")  # ISO string
     created_at: Optional[datetime] = Field(None, alias="createdAt")
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
+
+class CompanyPlanUpdate(BaseCamelModel):
+    plan: str = Field(..., pattern="^(free_trial|basic|standard|premium|enterprise)$")
+
+class CompanyAdminUpdate(BaseCamelModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    email: Optional[EmailStr] = None
 
 # Company Stats Schema
 class CompanyStats(BaseCamelModel):

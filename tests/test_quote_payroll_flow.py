@@ -1,12 +1,17 @@
 """Exercise quote and payroll persistence against an isolated SQLite database."""
 
 import os
+import io
 import tempfile
 import unittest
 from pathlib import Path
 from uuid import uuid4
 from types import SimpleNamespace
 from sqlalchemy import text
+from fastapi import HTTPException
+from fastapi import UploadFile
+from starlette.requests import Request
+from starlette.datastructures import Headers
 
 os.environ["DATABASE_MODE"] = "offline"
 _test_db = Path(tempfile.gettempdir()) / f"senatrack-test-{uuid4().hex}.sqlite3"
@@ -14,12 +19,13 @@ os.environ["LOCAL_DB_PATH"] = _test_db.as_posix()
 
 import app.models  # noqa: E402 - register the SQLAlchemy tables
 from app.core.database import Base, LocalAsyncSession, local_async_engine, set_db_session, _apply_non_destructive_alters  # noqa: E402
-from app.models.company_model import Company  # noqa: E402
+from app.models.company_model import Company, CompanyMember as CompanyMemberModel, UserCompanyRoleModel  # noqa: E402
 from app.models.employee_model import EmployeeModel  # noqa: E402
 from app.models.user_model import User  # noqa: E402
 from app.models.tva_rate_model import TvaRateModel  # noqa: E402
 from app.schemas.company_schema import CompanySettings  # noqa: E402
 from app.routes.company_route import update_company_settings  # noqa: E402
+from app.core.dependencies import ensure_company_access, get_company_id  # noqa: E402
 from app.schemas.employee_schema import EmployeePayroll, EmployeePayrollCreate  # noqa: E402
 from app.schemas.proforma_schema import Proforma, ProformaCreate, ProformaUpdate  # noqa: E402
 from app.schemas.purchase_order_schema import PurchaseOrder, PurchaseOrderCreate, PurchaseOrderUpdate  # noqa: E402
@@ -28,6 +34,10 @@ from app.services.employee_service import EmployeeService  # noqa: E402
 from app.services.proforma_service import ProformaService  # noqa: E402
 from app.services.purchase_order_service import PurchaseOrderService  # noqa: E402
 from app.services.supplier_service import SupplierService  # noqa: E402
+from app.services.company_service import CompanyService  # noqa: E402
+from app.services.file_service import FileService  # noqa: E402
+from app.services.activation_key_service import ActivationKeyService  # noqa: E402
+from app.schemas.activation_key_schema import ActivationKeyCreate, ActivationKeyUsageResponse  # noqa: E402
 
 
 class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
@@ -42,6 +52,7 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             await connection.execute(text("CREATE TABLE purchase_orders (id VARCHAR(20) PRIMARY KEY, company_id VARCHAR(64), order_number VARCHAR(100) NOT NULL, supplier_id VARCHAR(64), status VARCHAR(20) NOT NULL, total_amount FLOAT NOT NULL, created_at DATETIME, updated_at DATETIME)"))
             await connection.execute(text("CREATE TABLE suppliers (id VARCHAR(20) PRIMARY KEY, company_id VARCHAR(64), name VARCHAR(255) NOT NULL, email VARCHAR(255), phone VARCHAR(20), address TEXT, is_active BOOLEAN, created_at DATETIME, updated_at DATETIME)"))
             await connection.run_sync(Base.metadata.create_all)
+            await _apply_non_destructive_alters(connection, dialect="sqlite")
             await _apply_non_destructive_alters(connection, dialect="sqlite")
             columns = await connection.execute(text("PRAGMA table_info(purchase_orders)"))
             self.assertIn("details", {column[1] for column in columns})
@@ -135,6 +146,74 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(company.settings["tva"]["defaultRateId"], "test-rate")
             self.assertEqual(company.settings["stockAlertThreshold"], 5)
+
+            owner = SimpleNamespace(id="test-user", platform_permissions=[])
+            outsider = SimpleNamespace(id="outsider", platform_permissions=[])
+            member = SimpleNamespace(id="test-member", platform_permissions=[])
+            await ensure_company_access("test-company", owner, session, owner_only=True)
+            with self.assertRaises(HTTPException) as denied:
+                await ensure_company_access("test-company", outsider, session)
+            self.assertEqual(denied.exception.status_code, 403)
+            request = Request({"type": "http", "headers": [(b"cookie", b"companyId=test-company")]})
+            with self.assertRaises(HTTPException) as denied:
+                await get_company_id(request, "test-company", session, outsider)
+            self.assertEqual(denied.exception.status_code, 403)
+            stale_cookie_request = Request({"type": "http", "headers": [(b"cookie", b"companyId=old-company")]})
+            self.assertEqual(await get_company_id(stale_cookie_request, "test-company", session, owner), "test-company")
+
+            session.add_all([
+                User(id="test-member", name="Member", email="member@example.invalid", hashed_password="unused"),
+                CompanyMemberModel(id="test-membership", company_id="test-company", user_id="test-member", is_active=True),
+            ])
+            await session.commit()
+            await ensure_company_access("test-company", member, session)
+            with self.assertRaises(HTTPException) as denied:
+                await ensure_company_access("test-company", member, session, owner_only=True)
+            self.assertEqual(denied.exception.status_code, 403)
+
+            session.add_all([
+                Company(id="other-company", name="Other Company", owner_id="test-user"),
+                UserCompanyRoleModel(id="test-role", company_id="test-company", name="Gestionnaire", permissions=["sales.read"]),
+                UserCompanyRoleModel(id="foreign-role", company_id="other-company", name="Foreign", permissions=["company.users.manage"]),
+            ])
+            await session.commit()
+            company_service = CompanyService()
+            self.assertEqual({company.id for company in await company_service.get_all_companies()}, {"test-company", "other-company"})
+            self.assertEqual((await company_service.update_company_plan("test-company", "basic")).subscription["plan"], "basic")
+            self.assertIn("accessEndDate", (await company_service.cancel_company_subscription("test-company")).subscription)
+            with self.assertRaises(HTTPException) as denied:
+                await company_service.assign_company_role_to_user("test-member", "test-company", "foreign-role", "test-user")
+            self.assertEqual(denied.exception.status_code, 404)
+            with self.assertRaises(HTTPException) as denied:
+                await company_service.assign_company_role_to_user("outsider", "test-company", "test-role", "test-user")
+            self.assertEqual(denied.exception.status_code, 403)
+            await company_service.assign_company_role_to_user("test-member", "test-company", "test-role", "test-user")
+            self.assertEqual([role.id for role in await company_service.get_user_company_roles("test-member", "test-company")], ["test-role"])
+
+            file_service = FileService()
+            with tempfile.TemporaryDirectory(prefix="senatrack-file-test-") as temp_files:
+                file_service.local_files_path = Path(temp_files)
+                def logo():
+                    return UploadFile(file=io.BytesIO(b"\xff\xd8test-image"), filename="logo.jpg", headers=Headers({"content-type": "image/jpeg"}))
+
+                first = await file_service.save_file(logo(), "company", "test-company", "logo_url", "test-company")
+                second = await file_service.save_file(logo(), "company", "test-company", "logo_url", "other-company")
+                self.assertNotEqual(first["file_id"], second["file_id"])
+                self.assertEqual(len(await file_service.get_entity_files("company", "test-company", "test-company")), 1)
+                self.assertEqual(len(await file_service.get_entity_files("company", "test-company", "other-company")), 1)
+                self.assertFalse(await file_service.delete_file(first["file_id"], "other-company"))
+                self.assertTrue(await file_service.delete_file(first["file_id"], "test-company"))
+                with self.assertRaises(HTTPException) as denied:
+                    await file_service.save_file(logo(), "../company", "test-company", "logo_url", "test-company")
+                self.assertEqual(denied.exception.status_code, 400)
+
+            key_service = ActivationKeyService()
+            key = await key_service.create_activation_key(ActivationKeyCreate(plan="premium", duration=30, createdBy="test-user"))
+            redemption = await key_service.use_activation_key(key.key, "test-company", "test-user")
+            self.assertTrue(ActivationKeyUsageResponse.model_validate(redemption).success)
+            self.assertFalse((await key_service.use_activation_key(key.key, "other-company", "test-user"))["success"])
+            await session.refresh(await session.get(Company, "test-company"))
+            self.assertEqual((await session.get(Company, "test-company")).subscription["plan"], "premium")
 
 if __name__ == "__main__":
     unittest.main()

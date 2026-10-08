@@ -2,12 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, require_company_member, require_company_owner, require_admin_access
 from app.core.database import get_async_db
 from app.schemas.user_schema import User
 from app.schemas.company_schema import (
     Company, CompanyCreate, CompanyUpdate, CompanyMemberCreate,
-    CompanyStats, CompanySettings, CompanySubscription, CompanyMember, CompanyMemberResponse
+    CompanyStats, CompanySettings, CompanySubscription, CompanyPlanUpdate, CompanyAdminUpdate, CompanyMember, CompanyMemberResponse
 )
 from app.services.company_service import CompanyService
 from app.utils.activity_logger import ActivityActor
@@ -23,7 +23,7 @@ async def create_company(
     current_user: User = Depends(get_current_user)
 ):
     """Create a new company"""
-    return await company_service.create_company(company_data)
+    return await company_service.create_company(company_data.model_copy(update={"owner_id": current_user.id}))
 
 @router.get("/", response_model=List[Company])
 async def get_user_companies(
@@ -33,7 +33,41 @@ async def get_user_companies(
     """Get all companies for the current user"""
     return await company_service.get_user_companies(current_user.id)
 
-@router.get("/{company_id}/users", response_model=List[User])
+@router.get("/admin/all", response_model=List[Company], dependencies=[Depends(require_admin_access)])
+async def get_all_companies(
+    limit: int = Query(100, ge=1, le=5000),
+    session: AsyncSession = Depends(get_async_db),
+):
+    return await company_service.get_all_companies(limit)
+
+@router.post("/{company_id}/subscription", response_model=Company, dependencies=[Depends(require_admin_access)])
+async def update_company_subscription(
+    company_id: str,
+    update_data: CompanyPlanUpdate,
+    session: AsyncSession = Depends(get_async_db),
+):
+    return await company_service.update_company_plan(company_id, update_data.plan)
+
+@router.post("/{company_id}/subscription/cancel", response_model=Company, dependencies=[Depends(require_admin_access)])
+async def cancel_company_subscription(
+    company_id: str,
+    session: AsyncSession = Depends(get_async_db),
+):
+    return await company_service.cancel_company_subscription(company_id)
+
+@router.patch("/{company_id}/admin", response_model=Company, dependencies=[Depends(require_admin_access)])
+async def update_company_as_admin(
+    company_id: str,
+    update_data: CompanyAdminUpdate,
+    session: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await company_service.update_company(
+        company_id, CompanyUpdate(name=update_data.name, email=update_data.email),
+        actor=ActivityActor.from_user(current_user),
+    )
+
+@router.get("/{company_id}/users", response_model=List[User], dependencies=[Depends(require_company_member)])
 async def get_company_users(
     company_id: str,
     session: AsyncSession = Depends(get_async_db),
@@ -42,7 +76,7 @@ async def get_company_users(
     """Get all users who are members of a company"""
     return await company_service.get_company_users(company_id)
 
-@router.get("/{company_id}", response_model=Company)
+@router.get("/{company_id}", response_model=Company, dependencies=[Depends(require_company_member)])
 async def get_company(
     company_id: str,
     session: AsyncSession = Depends(get_async_db),
@@ -55,7 +89,7 @@ async def get_company(
     return company
 
 
-@router.patch("/{company_id}/settings", response_model=Company)
+@router.patch("/{company_id}/settings", response_model=Company, dependencies=[Depends(require_company_owner)])
 async def update_company_settings(
     company_id: str,
     settings_data: CompanySettings,
@@ -89,7 +123,7 @@ async def update_company_settings(
         actor=ActivityActor.from_user(current_user),
     )
 
-@router.put("/{company_id}", response_model=Company)
+@router.put("/{company_id}", response_model=Company, dependencies=[Depends(require_company_owner)])
 async def update_company(
     company_id: str,
     company_data: CompanyUpdate,
@@ -97,9 +131,11 @@ async def update_company(
     current_user: User = Depends(get_current_user)
 ):
     """Update a company"""
+    if company_data.settings is not None:
+        raise HTTPException(status_code=400, detail="Use the settings endpoint to update company settings")
     return await company_service.update_company(company_id=company_id, company_data=company_data, actor=ActivityActor.from_user(current_user))
 
-@router.delete("/{company_id}")
+@router.delete("/{company_id}", dependencies=[Depends(require_company_owner)])
 async def delete_company(
     company_id: str,
     session: AsyncSession = Depends(get_async_db),
@@ -111,7 +147,7 @@ async def delete_company(
         raise HTTPException(status_code=500, detail="Failed to delete company")
     return {"message": "Company deleted successfully"}
 
-@router.post("/{company_id}/members", response_model=CompanyMemberResponse)
+@router.post("/{company_id}/members", response_model=CompanyMemberResponse, dependencies=[Depends(require_company_owner)])
 async def add_company_member(
     company_id: str,
     member_data: CompanyMemberCreate,
@@ -121,7 +157,7 @@ async def add_company_member(
     """Add a member to a company"""
     return await company_service.add_company_member(company_id, member_data)
 
-@router.post("/{company_id}/members/simple", response_model=CompanyMemberResponse)
+@router.post("/{company_id}/members/simple", response_model=CompanyMemberResponse, dependencies=[Depends(require_company_owner)])
 async def add_company_member_simple(
     company_id: str,
     request_data: dict,
@@ -136,7 +172,7 @@ async def add_company_member_simple(
     )
     return await company_service.add_company_member(company_id, member_data)
 
-@router.delete("/{company_id}/members/{user_id}")
+@router.delete("/{company_id}/members/{user_id}", dependencies=[Depends(require_company_owner)])
 async def remove_company_member(
     company_id: str,
     user_id: str,
@@ -149,7 +185,7 @@ async def remove_company_member(
         raise HTTPException(status_code=500, detail="Failed to remove member")
     return {"message": "Member removed successfully"}
 
-@router.post("/{company_id}/extend-access")
+@router.post("/{company_id}/extend-access", dependencies=[Depends(require_admin_access)])
 async def extend_company_access(
     company_id: str,
     days: int = Query(..., gt=0, description="Number of days to extend access"),
@@ -162,11 +198,10 @@ async def extend_company_access(
         raise HTTPException(status_code=500, detail="Failed to extend access")
     return {"message": f"Access extended by {days} days"}
 
-@router.get("/stats/overview", response_model=CompanyStats)
+@router.get("/stats/overview", response_model=CompanyStats, dependencies=[Depends(require_admin_access)])
 async def get_company_stats(
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get company statistics (admin only)"""
-    # TODO: Add admin check
     return await company_service.get_company_stats()

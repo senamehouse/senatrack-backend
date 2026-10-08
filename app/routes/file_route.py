@@ -1,14 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 import os
 
 from app.services.file_service import FileService
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_company_id, ensure_company_access, require_admin_access
 from app.core.database import get_async_db
 from app.schemas.user_schema import User
-from app.utils.activity_logger import ActivityActor
 
 router = APIRouter(prefix="/files", tags=["Files"])
 svc = FileService()
@@ -16,6 +15,7 @@ svc = FileService()
 
 @router.post("/upload")
 async def upload_file(
+    request: Request,
     file: UploadFile = File(...),
     entity_type: str = Form(...),
     entity_id: str = Form(...),
@@ -25,6 +25,17 @@ async def upload_file(
     current_user: User = Depends(get_current_user),
 ):
     try:
+        is_pending_company_logo = entity_type == "company" and entity_id == f"temp-company-{current_user.id}" and field_name == "logo_url"
+        if not is_pending_company_logo:
+            selected_company_id = company_id or request.headers.get("X-Company-Id") or request.cookies.get("companyId")
+            if not selected_company_id:
+                raise HTTPException(status_code=400, detail="Company ID is required")
+            await ensure_company_access(selected_company_id, current_user, session, owner_only=entity_type == "company")
+            if entity_type == "company" and entity_id != selected_company_id:
+                raise HTTPException(status_code=403, detail="Company logo target mismatch")
+            company_id = selected_company_id
+        else:
+            company_id = None
         return await svc.save_file(
             file=file,
             entity_type=entity_type,
@@ -34,8 +45,8 @@ async def upload_file(
         )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="File upload failed")
 
 
 @router.get("/{file_id}")
@@ -60,10 +71,11 @@ async def get_file(
 @router.delete("/{file_id}")
 async def delete_file(
     file_id: str,
+    company_id: str = Depends(get_company_id),
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user)
 ):
-    ok = await svc.delete_file(file_id=file_id, actor=ActivityActor.from_user(current_user))
+    ok = await svc.delete_file(file_id=file_id, company_id=company_id)
     if not ok:
         raise HTTPException(status_code=404, detail="File not found")
     return {"message": "File deleted"}
@@ -72,7 +84,7 @@ async def delete_file(
 @router.post("/sync/offline-to-online")
 async def sync_offline_to_online(
     session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_admin_access)
 ):
     """
     Sync local files to S3 (offline → online).
@@ -84,7 +96,7 @@ async def sync_offline_to_online(
 @router.post("/sync/online-to-offline")
 async def sync_online_to_offline(
     session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_admin_access)
 ):
     """
     Download S3 files to local storage (online → offline).
@@ -97,10 +109,11 @@ async def sync_online_to_offline(
 async def get_entity_files(
     entity_type: str,
     entity_id: str,
+    company_id: str = Depends(get_company_id),
     session: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get all active files for a specific entity"""
-    return await svc.get_entity_files(entity_type, entity_id)
+    return await svc.get_entity_files(entity_type, entity_id, company_id)
 
 

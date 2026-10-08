@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, require_admin_access, ensure_company_access
 from app.core.database import get_async_db
 from app.schemas.user_schema import User
 from app.schemas.activation_key_schema import (
@@ -17,26 +17,26 @@ activation_key_service = ActivationKeyService()
 async def create_activation_key(
     key_data: ActivationKeyCreate,
     session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_admin_access)
 ):
     """Create a new activation key (admin only)"""
-    # TODO: Add admin check
-    return await activation_key_service.create_activation_key(key_data)
+    return await activation_key_service.create_activation_key(
+        key_data.model_copy(update={"created_by": current_user.id})
+    )
 
 @router.get("/", response_model=List[ActivationKey])
 async def get_all_activation_keys(
     session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_admin_access)
 ):
     """Get all activation keys (admin only)"""
-    # TODO: Add admin check
     return await activation_key_service.get_all_activation_keys()
 
 @router.get("/{key_id}", response_model=ActivationKey)
 async def get_activation_key(
     key_id: str,
     session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_admin_access)
 ):
     """Get an activation key by ID"""
     key = await activation_key_service.get_activation_key_by_id(key_id)
@@ -48,7 +48,7 @@ async def get_activation_key(
 async def get_activation_key_by_key(
     key: str,
     session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_admin_access)
 ):
     """Get an activation key by key string"""
     activation_key = await activation_key_service.get_activation_key_by_key(key)
@@ -61,20 +61,18 @@ async def update_activation_key(
     key_id: str,
     key_data: ActivationKeyUpdate,
     session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_admin_access)
 ):
     """Update an activation key (admin only)"""
-    # TODO: Add admin check
     return await activation_key_service.update_activation_key(key_id, key_data)
 
 @router.delete("/{key_id}")
 async def delete_activation_key(
     key_id: str,
     session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_admin_access)
 ):
     """Delete an activation key (admin only)"""
-    # TODO: Add admin check
     success = await activation_key_service.delete_activation_key(key_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete activation key")
@@ -87,18 +85,20 @@ async def use_activation_key(
     current_user: User = Depends(get_current_user)
 ):
     """Use an activation key"""
+    if usage_data.user_id and usage_data.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Cannot activate for another user")
+    await ensure_company_access(usage_data.company_id, current_user, session, owner_only=True)
     result = await activation_key_service.use_activation_key(
         usage_data.key,
         usage_data.company_id,
-        usage_data.user_id
+        current_user.id
     )
     return ActivationKeyUsageResponse(**result)
 
 @router.get("/stats/overview", response_model=ActivationKeyStats)
 async def get_activation_key_stats(
     session: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_admin_access)
 ):
     """Get activation key statistics (admin only)"""
-    # TODO: Add admin check
     return await activation_key_service.get_activation_key_stats()
