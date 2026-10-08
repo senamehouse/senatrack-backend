@@ -125,6 +125,21 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
 
             updated_product = await update_product(product.id, ProductUpdate(sell_price=75), session=session, current_user=user, company_id="company-a")
             self.assertEqual(updated_product.sell_price, 75)
+            with patch.object(session, "commit", new=AsyncMock(side_effect=RuntimeError("stock write failed"))):
+                with self.assertRaises(HTTPException) as failed_stock_update:
+                    await update_product(product.id, ProductUpdate(name="Should roll back", stock=1), session=session, current_user=user, company_id="company-a")
+            self.assertEqual(failed_stock_update.exception.status_code, 500)
+            self.assertEqual((await session.get(Product, product.id)).name, "Item")
+            self.assertEqual((await session.get(Product, product.id)).stock, 3)
+            self.assertEqual(await StockMovementService().get_all("company-a"), [])
+            corrected_product = await update_product(product.id, ProductUpdate(stock=1), session=session, current_user=user, company_id="company-a")
+            self.assertEqual(corrected_product.stock, 1)
+            adjustments = await StockMovementService().get_all("company-a")
+            self.assertEqual(len(adjustments), 1)
+            self.assertEqual(adjustments[0].movement_type, MovementType.ADJUSTMENT)
+            self.assertEqual(adjustments[0].items[0].quantity, -2)
+            self.assertTrue(await StockMovementService().delete(adjustments[0].id, "company-a"))
+            self.assertEqual((await session.get(Product, product.id)).stock, 3)
             updated_client = await update_client(client.id, ClientUpdate(name="Buyer 2"), session=session, current_user=user, company_id="company-a")
             self.assertEqual(updated_client.name, "Buyer 2")
             updated_service = await update_service(service.id, ServiceUpdate(price=75), session=session, current_user=user, company_id="company-a")
@@ -183,6 +198,28 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
                 await service.create("company-a", outgoing)
             self.assertEqual(insufficient.exception.status_code, 409)
             self.assertEqual((await session.scalars(select(StockMovementModel))).all(), [])
+            self.assertEqual((await session.get(Product, "stock-product")).stock, 3)
+
+            negative_outgoing = outgoing.model_copy(update={"items": [item.model_copy(update={"quantity": -1})]})
+            with self.assertRaises(HTTPException) as invalid_outgoing:
+                await service.create("company-a", negative_outgoing)
+            self.assertEqual(invalid_outgoing.exception.status_code, 400)
+
+            adjustment = payload.model_copy(update={
+                "movement_type": MovementType.ADJUSTMENT,
+                "items": [item.model_copy(update={"quantity": -2})],
+            })
+            adjustment_id = await service.create("company-a", adjustment)
+            self.assertEqual((await session.get(Product, "stock-product")).stock, 1)
+            self.assertTrue(await service.delete(adjustment_id, "company-a"))
+            self.assertEqual((await session.get(Product, "stock-product")).stock, 3)
+
+            excessive_adjustment = adjustment.model_copy(update={
+                "items": [item.model_copy(update={"quantity": -4})],
+            })
+            with self.assertRaises(HTTPException) as insufficient_adjustment:
+                await service.create("company-a", excessive_adjustment)
+            self.assertEqual(insufficient_adjustment.exception.status_code, 409)
             self.assertEqual((await session.get(Product, "stock-product")).stock, 3)
 
     async def test_sale_and_stock_change_commit_or_rollback_together(self):

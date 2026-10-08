@@ -53,7 +53,7 @@ class StockMovementService:
                 raise HTTPException(status_code=400, detail="At least one product is required")
             quantities: dict[str, int] = {}
             for item in payload.items:
-                if item.quantity <= 0 or item.price < 0:
+                if item.quantity == 0 or item.price < 0 or (payload.movement_type != MovementType.ADJUSTMENT and item.quantity < 0):
                     raise HTTPException(status_code=400, detail="Invalid item quantity or price")
                 quantities[item.product_id] = quantities.get(item.product_id, 0) + item.quantity
             products_result = await session.execute(
@@ -65,9 +65,10 @@ class StockMovementService:
             products = {product.id: product for product in products_result.scalars()}
             if len(products) != len(quantities):
                 raise HTTPException(status_code=400, detail="A product does not belong to this company")
-            if payload.movement_type == MovementType.OUT:
+            if payload.movement_type in (MovementType.OUT, MovementType.ADJUSTMENT):
                 for product_id, quantity in quantities.items():
-                    if (products[product_id].stock or 0) < quantity:
+                    delta = -quantity if payload.movement_type == MovementType.OUT else quantity
+                    if (products[product_id].stock or 0) + delta < 0:
                         raise HTTPException(status_code=409, detail="Insufficient product stock")
             movement = StockMovementModel(
                 company_id=company_id,
@@ -227,13 +228,12 @@ class StockMovementService:
             products = {product.id: product for product in products_result.scalars()}
             if len(products) != len(quantities):
                 raise HTTPException(status_code=409, detail="A movement product no longer exists")
-            if movement_type != MovementType.OUT:
-                for product_id, quantity in quantities.items():
-                    if (products[product_id].stock or 0) < quantity:
-                        raise HTTPException(status_code=409, detail="Cannot reverse movement: insufficient stock")
             for product_id, quantity in quantities.items():
                 product = products[product_id]
-                product.stock = (product.stock or 0) + (quantity if movement_type == MovementType.OUT else -quantity)
+                reversal = quantity if movement_type == MovementType.OUT else -quantity
+                if (product.stock or 0) + reversal < 0:
+                    raise HTTPException(status_code=409, detail="Cannot reverse movement: insufficient stock")
+                product.stock = (product.stock or 0) + reversal
                 product.updated_at = datetime.now()
             if movement.document_reference:
                 file_match = re.search(r"/files/([A-Za-z0-9]{15})(?:\?.*)?$", movement.document_reference)

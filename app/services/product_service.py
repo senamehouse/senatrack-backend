@@ -13,6 +13,8 @@ from app.schemas.product_schema import (
     ProductStats, ProductCategoryStats, UnitStats
 )
 from app.utils.activity_logger import audit, ActivityActor
+from app.schemas.stock_movement_schema import StockMovementCreate, StockMovementItemCreate, MovementType
+from app.services.stock_movement_service import StockMovementService
 
 
 class ProductService:
@@ -436,12 +438,15 @@ class ProductService:
             query = select(ProductModel).where(ProductModel.id == product_id)
             if company_id:
                 query = query.where(ProductModel.company_id == company_id)
-            result = await session.execute(query)
+            result = await session.execute(query.with_for_update())
             product = result.scalar_one_or_none()
             
             if not product:
                 return False
             await self._validate_product_relations(session, company_id, product_data.category_id, product_data.unit_id)
+            previous_stock = product.stock or 0
+            requested_stock = product_data.stock
+            adjustment = requested_stock - previous_stock if requested_stock is not None else 0
             
             # Update fields
             if product_data.name is not None:
@@ -454,8 +459,6 @@ class ProductService:
                 product.buy_price = product_data.buy_price
             if product_data.sell_price is not None:
                 product.sell_price = product_data.sell_price
-            if product_data.stock is not None:
-                product.stock = product_data.stock
             if product_data.image_url is not None:
                 product.image_url = product_data.image_url
             if product_data.category_id is not None:
@@ -467,14 +470,39 @@ class ProductService:
             
             product.updated_at = datetime.now()
             # Keep the product edit and its sync event in one transaction.
+            sync_data = product.to_dict()
+            if requested_stock is not None:
+                sync_data["stock"] = requested_stock
             sync_log = SyncLog(
                 operation='UPDATE',
                 table_name='products',
                 record_id=product.id,
-                data=json.dumps(product.to_dict())
+                data=json.dumps(sync_data)
             )
             session.add(sync_log)
-            await session.commit()
+            if adjustment:
+                unit = await session.scalar(select(UnitModel.abbreviation).where(UnitModel.id == product.unit_id))
+                value = abs(adjustment) * product.buy_price
+                movement = StockMovementCreate(
+                    date=datetime.now(),
+                    movement_type=MovementType.ADJUSTMENT,
+                    label=f"Ajustement manuel : {product.name}",
+                    reason="Manual stock correction",
+                    author=(actor.user_name or actor.user_id) if actor else "system",
+                    details=f"Stock corrigé de {previous_stock} à {requested_stock}",
+                    total_value=value,
+                    items=[StockMovementItemCreate(
+                        product_id=product.id,
+                        product_name=product.name,
+                        quantity=adjustment,
+                        price=product.buy_price,
+                        total=value,
+                        unit=unit or "",
+                    )],
+                )
+                await StockMovementService().create(company_id, movement, actor=actor)
+            else:
+                await session.commit()
             
             return True
         except HTTPException:
