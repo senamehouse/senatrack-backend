@@ -27,7 +27,7 @@ from app.models.tva_rate_model import TvaRateModel  # noqa: E402
 from app.schemas.company_schema import CompanySettings  # noqa: E402
 from app.routes.company_route import update_company_settings  # noqa: E402
 from app.core.dependencies import ensure_company_access, get_company_id  # noqa: E402
-from app.schemas.employee_schema import EmployeePayroll, EmployeePayrollCreate  # noqa: E402
+from app.schemas.employee_schema import EmployeePayroll, EmployeePayrollCreate, EmployeeLeaveRequestCreate, EmployeeLeaveRequestUpdate  # noqa: E402
 from app.schemas.proforma_schema import Proforma, ProformaCreate, ProformaUpdate  # noqa: E402
 from app.schemas.purchase_order_schema import PurchaseOrder, PurchaseOrderCreate, PurchaseOrderUpdate  # noqa: E402
 from app.schemas.supplier_schema import Supplier, SupplierCreate, SupplierUpdate  # noqa: E402
@@ -133,6 +133,50 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             roles = await UserService().get_user_roles("startup-admin")
             self.assertIn("Platform Administrator", [role.name for role in roles])
             self.assertFalse((await MigrationService().get_migration_status())["migration_needed"])
+
+    async def test_leave_request_round_trip_and_company_scope(self):
+        async with local_async_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            session.add_all([
+                User(id="leave-owner", name="Owner", email="leave-owner@example.com", hashed_password="unused"),
+                Company(id="leave-company", name="Leave Company", owner_id="leave-owner"),
+                Company(id="other-company", name="Other", owner_id="leave-owner"),
+                EmployeeModel(id="leave-employee", company_id="leave-company", first_name="Awa", last_name="Sene"),
+                EmployeeModel(id="other-employee", company_id="other-company", first_name="Bad", last_name="Scope"),
+            ])
+            await session.commit()
+
+            leaves = EmployeeService()
+            payload = EmployeeLeaveRequestCreate.model_validate({
+                "employeeId": "leave-employee", "leaveType": "annual", "status": "pending",
+                "startDate": "2026-10-08T00:00:00.000Z", "endDate": "2026-10-10T00:00:00.000Z",
+                "daysRequested": 3, "reason": "Vacances",
+            })
+            leave_id = await leaves.create_leave_request("leave-employee", "leave-company", payload)
+            saved = await leaves.get_leave_request_by_id(leave_id, "leave-employee", "leave-company")
+            self.assertEqual(saved.employee_name, "Awa Sene")
+            self.assertEqual(saved.start_date, "2026-10-08")
+            self.assertEqual(saved.end_date, "2026-10-10")
+            self.assertLessEqual(len(saved.requested_date), 20)
+            self.assertEqual(len(await leaves.get_all_leave_requests("leave-company")), 1)
+            self.assertEqual(len(await leaves.get_leave_requests("leave-employee", "leave-company")), 1)
+            self.assertEqual(await leaves.get_all_leave_requests("other-company"), [])
+            self.assertIsNone(await leaves.get_leave_request_by_id(leave_id, "leave-employee", "other-company"))
+
+            with self.assertRaises(HTTPException) as cross_company:
+                await leaves.create_leave_request("other-employee", "leave-company", payload)
+            self.assertEqual(cross_company.exception.status_code, 404)
+            with self.assertRaises(HTTPException) as reversed_dates:
+                await leaves.update_leave_request(leave_id, "leave-employee", "leave-company", EmployeeLeaveRequestUpdate(endDate="2026-10-07"))
+            self.assertEqual(reversed_dates.exception.status_code, 422)
+            self.assertTrue(await leaves.update_leave_request(leave_id, "leave-employee", "leave-company", EmployeeLeaveRequestUpdate(endDate="2026-10-11")))
+            self.assertTrue(await leaves.approve_leave_request(leave_id, "leave-employee", "leave-company", approved_by="leave-owner"))
+            approved = await leaves.get_leave_request_by_id(leave_id, "leave-employee", "leave-company")
+            self.assertEqual(approved.status, "approved")
+            self.assertEqual(approved.end_date, "2026-10-11")
+            self.assertLessEqual(len(approved.approved_date), 20)
 
     async def test_quote_and_payroll_round_trip(self):
         async with local_async_engine.begin() as connection:

@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict
-from datetime import datetime
+from datetime import date, datetime
 from fastapi import HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -28,6 +28,14 @@ from app.utils.activity_logger import audit, ActivityActor
 
 
 class EmployeeService:
+    @staticmethod
+    def _leave_date(value: str) -> str:
+        """Store leave dates as ISO calendar dates in the existing VARCHAR(20) columns."""
+        try:
+            return date.fromisoformat(value[:10]).isoformat()
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="Invalid leave date")
+
     async def get_all(self, company_id: str) -> List[EmployeeSchema]:
         try:
             session = get_db_session()
@@ -384,7 +392,7 @@ class EmployeeService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(EmployeeLeaveModel)
+                select(EmployeeLeaveModel).options(selectinload(EmployeeLeaveModel.employee))
                 .where(
                     EmployeeLeaveModel.company_id == company_id,
                 )
@@ -399,7 +407,7 @@ class EmployeeService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(EmployeeLeaveModel).where(
+                select(EmployeeLeaveModel).options(selectinload(EmployeeLeaveModel.employee)).where(
                     EmployeeLeaveModel.employee_id == employee_id,
                     EmployeeLeaveModel.company_id == company_id,
                 )
@@ -413,7 +421,7 @@ class EmployeeService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(EmployeeLeaveModel).where(
+                select(EmployeeLeaveModel).options(selectinload(EmployeeLeaveModel.employee)).where(
                     EmployeeLeaveModel.id == leave_id,
                     EmployeeLeaveModel.employee_id == employee_id,
                     EmployeeLeaveModel.company_id == company_id,
@@ -434,21 +442,34 @@ class EmployeeService:
     async def create_leave_request(self, employee_id: str, company_id: str, payload: EmployeeLeaveRequestCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
+            employee = await session.scalar(select(EmployeeModel.id).where(
+                EmployeeModel.id == employee_id,
+                EmployeeModel.company_id == company_id,
+                EmployeeModel.is_active == True,
+            ))
+            if employee is None or payload.employee_id != employee_id:
+                raise HTTPException(status_code=404, detail="Employee not found")
+            start_date = self._leave_date(payload.start_date)
+            end_date = self._leave_date(payload.end_date)
+            if end_date < start_date:
+                raise HTTPException(status_code=422, detail="End date must not precede start date")
             lv = EmployeeLeaveModel(
                 company_id=company_id,
                 employee_id=employee_id,
                 leave_type=payload.leave_type,
                 status=payload.status,
-                start_date=payload.start_date,
-                end_date=payload.end_date,
+                start_date=start_date,
+                end_date=end_date,
                 days_requested=payload.days_requested,
                 reason=payload.reason,
-                requested_date=datetime.utcnow().isoformat(),
+                requested_date=date.today().isoformat(),
             )
             session.add(lv)
             await session.commit()
             await session.refresh(lv)
             return lv.id
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating leave request: {str(e)}")
 
@@ -472,11 +493,19 @@ class EmployeeService:
             lv = result.scalar_one_or_none()
             if not lv:
                 return False
-            for field, value in payload.model_dump(exclude_unset=True).items():
+            changes = payload.model_dump(exclude_unset=True)
+            for field in ("start_date", "end_date"):
+                if field in changes:
+                    changes[field] = self._leave_date(changes[field])
+            if changes.get("end_date", self._leave_date(lv.end_date)) < changes.get("start_date", self._leave_date(lv.start_date)):
+                raise HTTPException(status_code=422, detail="End date must not precede start date")
+            for field, value in changes.items():
                 setattr(lv, field, value)
             lv.updated_at = datetime.now()
             await session.commit()
             return True
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating leave request: {str(e)}")
 
@@ -520,7 +549,7 @@ class EmployeeService:
                 return False
             lv.status = "approved"
             lv.approved_by = approved_by
-            lv.approved_date = datetime.utcnow().isoformat()
+            lv.approved_date = date.today().isoformat()
             lv.updated_at = datetime.utcnow()
             await session.commit()
             return True
@@ -542,7 +571,7 @@ class EmployeeService:
                 return False
             lv.status = "rejected"
             lv.approved_by = approved_by
-            lv.approved_date = datetime.utcnow().isoformat()
+            lv.approved_date = date.today().isoformat()
             lv.rejection_reason = rejection_reason
             lv.updated_at = datetime.utcnow()
             await session.commit()
