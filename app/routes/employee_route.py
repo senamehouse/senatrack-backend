@@ -298,7 +298,7 @@ async def get_employee_payroll(
     return payroll
 
 
-@router.post("/{employee_id}/payrolls", response_model=dict)
+@router.post("/{employee_id}/payrolls", response_model=EmployeePayroll)
 async def create_employee_payroll(
     employee_id: str,
     payload: EmployeePayrollCreate,
@@ -307,10 +307,10 @@ async def create_employee_payroll(
     company_id: str = Depends(get_company_id)
 ):
     payroll_id = await svc.create_payroll(employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
-    return {"message": "Payroll created", "payroll_id": payroll_id}
+    return await svc.get_payroll_by_id(payroll_id, employee_id, company_id)
 
 
-@router.put("/{employee_id}/payrolls/{payroll_id}", response_model=dict)
+@router.put("/{employee_id}/payrolls/{payroll_id}", response_model=EmployeePayroll)
 async def update_employee_payroll(
     employee_id: str,
     payroll_id: str,
@@ -322,7 +322,7 @@ async def update_employee_payroll(
     ok = await svc.update_payroll(payroll_id=payroll_id, employee_id=employee_id, company_id=company_id, payload=payload, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Payroll not found")
-    return {"message": "Payroll updated"}
+    return await svc.get_payroll_by_id(payroll_id, employee_id, company_id)
 
 
 @router.delete("/{employee_id}/payrolls/{payroll_id}", response_model=dict)

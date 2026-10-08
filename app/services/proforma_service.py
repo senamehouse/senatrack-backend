@@ -13,37 +13,39 @@ import re
 class ProformaService:
     """Service for proforma-related operations"""
 
-    async def create_proforma(self, proforma_data: ProformaCreate) -> Proforma:
+    async def create_proforma(self, proforma_data: ProformaCreate, company_id: str, created_by: str) -> Proforma:
         """Create a new proforma"""
         try:
             session = get_db_session()
             # Always generate proforma number if not provided or empty
             if not proforma_data.number or not proforma_data.number.strip():
-                proforma_data.number = await self.generate_proforma_number(proforma_data.company_id)
+                proforma_data.number = await self.generate_proforma_number(company_id)
 
-            proforma_dict = proforma_data.model_dump()
-            proforma_dict.update({
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            })
+            proforma_dict = proforma_data.model_dump(exclude={"objet"})
+            proforma_dict["client"] = proforma_data.client.model_dump(by_alias=True)
+            proforma_dict["items"] = [item.model_dump(by_alias=True) for item in proforma_data.items]
+            proforma_dict.update({"company_id": company_id, "created_by": created_by,
+                                  "notes": proforma_data.objet, "created_at": datetime.utcnow(),
+                                  "updated_at": datetime.utcnow()})
 
             proforma = Proforma(**proforma_dict)
             session.add(proforma)
             await session.commit()
             await session.refresh(proforma)
 
-            return proforma
+            return proforma.to_dict()
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating proforma: {str(e)}")
 
-    async def get_proforma_by_id(self, proforma_id: str) -> Optional[Proforma]:
+    async def get_proforma_by_id(self, proforma_id: str, company_id: str) -> Optional[Proforma]:
         """Get a proforma by ID"""
         try:
             session = get_db_session()
             result = await session.execute(
-                select(Proforma).where(Proforma.id == proforma_id, Proforma.is_active == True)
+                select(Proforma).where(Proforma.id == proforma_id, Proforma.company_id == company_id, Proforma.is_active == True)
             )
-            return result.scalar_one_or_none()
+            proforma = result.scalar_one_or_none()
+            return proforma.to_dict() if proforma else None
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving proforma: {str(e)}")
 
@@ -77,17 +79,17 @@ class ProformaService:
                     query = query.limit(filters.limit)
 
             result = await session.execute(query)
-            return result.scalars().all()
+            return [proforma.to_dict() for proforma in result.scalars().all()]
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving proformas: {str(e)}")
 
-    async def update_proforma(self, proforma_id: str, proforma_data: ProformaUpdate) -> Proforma:
+    async def update_proforma(self, proforma_id: str, company_id: str, proforma_data: ProformaUpdate) -> Proforma:
         """Update a proforma"""
         try:
             session = get_db_session()
             # Get existing proforma
             result = await session.execute(
-                select(Proforma).where(Proforma.id == proforma_id, Proforma.is_active == True)
+                select(Proforma).where(Proforma.id == proforma_id, Proforma.company_id == company_id, Proforma.is_active == True)
             )
             proforma = result.scalar_one_or_none()
 
@@ -96,6 +98,12 @@ class ProformaService:
 
             # Update fields
             update_data = proforma_data.model_dump(exclude_unset=True)
+            if "objet" in update_data:
+                update_data["notes"] = update_data.pop("objet")
+            if "client" in update_data and proforma_data.client:
+                update_data["client"] = proforma_data.client.model_dump(by_alias=True)
+            if "items" in update_data and proforma_data.items is not None:
+                update_data["items"] = [item.model_dump(by_alias=True) for item in proforma_data.items]
             update_data["updated_at"] = datetime.utcnow()
 
             await session.execute(
@@ -107,24 +115,24 @@ class ProformaService:
             result = await session.execute(
                 select(Proforma).where(Proforma.id == proforma_id)
             )
-            return result.scalar_one()
+            return result.scalar_one().to_dict()
         except HTTPException:
             raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error updating proforma: {str(e)}")
 
-    async def delete_proforma(self, proforma_id: str) -> bool:
+    async def delete_proforma(self, proforma_id: str, company_id: str) -> bool:
         """Delete a proforma (soft delete)"""
         try:
             session = get_db_session()
-            await session.execute(
-                update(Proforma).where(Proforma.id == proforma_id).values(
+            result = await session.execute(
+                update(Proforma).where(Proforma.id == proforma_id, Proforma.company_id == company_id).values(
                     is_active=False,
                     updated_at=datetime.utcnow()
                 )
             )
             await session.commit()
-            return True
+            return result.rowcount > 0
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error deleting proforma: {str(e)}")
 
@@ -170,15 +178,8 @@ class ProformaService:
         """Generate a unique proforma number"""
         try:
             session = get_db_session()
-            # Get existing proforma numbers for this company
-            result = await session.execute(
-                select(Proforma.number).where(
-                    and_(
-                        Proforma.company_id == company_id,
-                        Proforma.is_active == True
-                    )
-                )
-            )
+            # The database enforces globally unique numbers, including across companies.
+            result = await session.execute(select(Proforma.number))
             existing_numbers = {row[0] for row in result.fetchall()}
 
             # Generate new number
@@ -207,7 +208,7 @@ class ProformaService:
                     )
                 ).order_by(desc(Proforma.date))
             )
-            return result.scalars().all()
+            return [proforma.to_dict() for proforma in result.scalars().all()]
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving proformas by client: {str(e)}")
 
@@ -223,6 +224,6 @@ class ProformaService:
                     )
                 ).order_by(desc(Proforma.date)).limit(limit)
             )
-            return result.scalars().all()
+            return [proforma.to_dict() for proforma in result.scalars().all()]
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving recent proformas: {str(e)}")

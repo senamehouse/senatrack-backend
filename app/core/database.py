@@ -187,6 +187,14 @@ async def _apply_non_destructive_alters(conn, dialect: str):
     Keep columns nullable to avoid destructive changes. Backfill local with COMPANY_ID.
     """
     company_id = settings.COMPANY_ID
+    # Quote/form totals were added after the first deployments.
+    for column in ("discount", "tva"):
+        if dialect == "postgresql":
+            await conn.execute(text(f"ALTER TABLE proformas ADD COLUMN IF NOT EXISTS {column} DOUBLE PRECISION DEFAULT 0"))
+        else:
+            columns = await conn.execute(text("PRAGMA table_info(proformas)"))
+            if column not in {row[1] for row in columns}:
+                await conn.execute(text(f"ALTER TABLE proformas ADD COLUMN {column} FLOAT DEFAULT 0"))
     # Tables to alter (must match models): simple list approach
     tables = [
         "users","product_categories","units","products","suppliers","clients","services",

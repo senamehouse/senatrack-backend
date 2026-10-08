@@ -151,8 +151,12 @@ class EmployeePayrollUpdate(BaseCamelModel):
     paid_date: Optional[str] = Field(None, alias="paidDate")
 
 
-class EmployeePayroll(EmployeePayrollBase):
+class EmployeePayroll(BaseCamelModel):
     id: str
+    employee_id: str = Field(..., alias="employeeId")
+    period: dict
+    net_salary: float = Field(..., alias="netSalary")
+    paid_date: Optional[str] = Field(None, alias="paidDate")
     company_id: Optional[str] = Field(None, alias="companyId")
     employee_name: Optional[str] = Field(None, alias="employeeName")
     created_at: datetime = Field(..., alias="createdAt")

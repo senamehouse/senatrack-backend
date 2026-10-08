@@ -21,9 +21,7 @@ async def create_proforma(
     company_id: str = Depends(get_company_id)
 ):
     """Create a new proforma"""
-    # enforce company id from header
-    proforma_data.company_id = proforma_data.company_id
-    return await proforma_service.create_proforma(proforma_data, actor=ActivityActor.from_user(current_user))
+    return await proforma_service.create_proforma(proforma_data, company_id=company_id, created_by=current_user.id)
 
 @router.get("/", response_model=List[Proforma])
 async def get_company_proformas(
@@ -50,7 +48,7 @@ async def get_proforma(
     company_id: str = Depends(get_company_id)
 ):
     """Get a proforma by ID"""
-    proforma = await proforma_service.get_proforma_by_id(proforma_id)
+    proforma = await proforma_service.get_proforma_by_id(proforma_id, company_id)
     if not proforma:
         raise HTTPException(status_code=404, detail="Proforma not found")
     return proforma
@@ -64,7 +62,7 @@ async def update_proforma(
     company_id: str = Depends(get_company_id)
 ):
     """Update a proforma"""
-    return await proforma_service.update_proforma(proforma_id=proforma_id, proforma_data=proforma_data, actor=ActivityActor.from_user(current_user))
+    return await proforma_service.update_proforma(proforma_id=proforma_id, company_id=company_id, proforma_data=proforma_data)
 
 @router.delete("/{proforma_id}")
 async def delete_proforma(
@@ -74,9 +72,9 @@ async def delete_proforma(
     company_id: str = Depends(get_company_id)
 ):
     """Delete a proforma"""
-    success = await proforma_service.delete_proforma(proforma_id=proforma_id, actor=ActivityActor.from_user(current_user))
+    success = await proforma_service.delete_proforma(proforma_id=proforma_id, company_id=company_id)
     if not success:
-        raise HTTPException(status_code=500, detail="Failed to delete proforma")
+        raise HTTPException(status_code=404, detail="Proforma not found")
     return {"message": "Proforma deleted successfully"}
 
 @router.get("/stats/{company_id}", response_model=ProformaStats)
@@ -87,6 +85,8 @@ async def get_proforma_stats(
     header_company_id: str = Depends(get_company_id)
 ):
     """Get proforma statistics for a company"""
+    if company_id != header_company_id:
+        raise HTTPException(status_code=403, detail="Company mismatch")
     return await proforma_service.get_proforma_stats(company_id)
 
 @router.get("/client/{company_id}/{client_name}", response_model=List[Proforma])
@@ -98,6 +98,8 @@ async def get_proformas_by_client(
     header_company_id: str = Depends(get_company_id)
 ):
     """Get proformas by client name"""
+    if company_id != header_company_id:
+        raise HTTPException(status_code=403, detail="Company mismatch")
     return await proforma_service.get_proformas_by_client(company_id, client_name)
 
 @router.get("/recent/{company_id}", response_model=List[Proforma])
@@ -109,4 +111,6 @@ async def get_recent_proformas(
     header_company_id: str = Depends(get_company_id)
 ):
     """Get recent proformas for a company"""
+    if company_id != header_company_id:
+        raise HTTPException(status_code=403, detail="Company mismatch")
     return await proforma_service.get_recent_proformas(company_id, limit)

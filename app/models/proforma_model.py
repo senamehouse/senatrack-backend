@@ -15,6 +15,8 @@ class Proforma(Base):
     client = Column(JSON, nullable=False)  # Store client info as JSON
     items = Column(JSON, nullable=False)  # Store items as JSON array
     subtotal = Column(Float, nullable=False, default=0.0)
+    discount = Column(Float, nullable=False, default=0.0)
+    tva = Column(Float, nullable=False, default=0.0)
     tax_amount = Column(Float, nullable=False, default=0.0)
     total = Column(Float, nullable=False, default=0.0)
     notes = Column(Text, nullable=True)
@@ -36,11 +38,17 @@ class Proforma(Base):
             "number": self.number,
             "date": self.date.isoformat() if self.date else None,
             "client": self.client,
-            "items": self.items,
+            "items": [
+                {**item, "description": item.get("description") or item.get("itemName", "")}
+                for item in (self.items or [])
+            ],
             "subtotal": self.subtotal,
+            "discount": self.discount or 0,
+            "tva": self.tva or 0,
             "tax_amount": self.tax_amount,
             "total": self.total,
             "notes": self.notes,
+            "objet": self.notes,
             "status": self.status,
             "company_id": self.company_id,
             "created_by": self.created_by,

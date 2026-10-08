@@ -552,6 +552,7 @@ class EmployeeService:
             session = get_db_session()
             result = await session.execute(
                 select(EmployeePayrollModel)
+                .options(selectinload(EmployeePayrollModel.employee))
                 .where(
                     EmployeePayrollModel.company_id == company_id,
                 )
@@ -566,7 +567,7 @@ class EmployeeService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(EmployeePayrollModel).where(
+                select(EmployeePayrollModel).options(selectinload(EmployeePayrollModel.employee)).where(
                     EmployeePayrollModel.employee_id == employee_id,
                     EmployeePayrollModel.company_id == company_id,
                 )
@@ -580,7 +581,7 @@ class EmployeeService:
         try:
             session = get_db_session()
             result = await session.execute(
-                select(EmployeePayrollModel).where(
+                select(EmployeePayrollModel).options(selectinload(EmployeePayrollModel.employee)).where(
                     EmployeePayrollModel.id == payroll_id,
                     EmployeePayrollModel.employee_id == employee_id,
                     EmployeePayrollModel.company_id == company_id,
@@ -601,6 +602,13 @@ class EmployeeService:
     async def create_payroll(self, employee_id: str, company_id: str, payload: EmployeePayrollCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
+            employee = await session.scalar(select(EmployeeModel).where(
+                EmployeeModel.id == employee_id,
+                EmployeeModel.company_id == company_id,
+                EmployeeModel.is_active == True,
+            ))
+            if employee is None or payload.employee_id != employee_id:
+                raise HTTPException(status_code=404, detail="Employee not found")
             pr = EmployeePayrollModel(
                 company_id=company_id,
                 employee_id=employee_id,
@@ -613,6 +621,8 @@ class EmployeeService:
             await session.commit()
             await session.refresh(pr)
             return pr.id
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error creating payroll: {str(e)}")
 

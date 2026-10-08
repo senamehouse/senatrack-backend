@@ -15,8 +15,7 @@ logger = logging.getLogger(__name__)
 class UploadService:
     def __init__(self):
         self.s3_session = aioboto3.Session()
-        # self.s3_bucket_name = settings.AWS_BUCKET_NAME
-        self.s3_bucket_name = "video-platform-aws"
+        self.s3_bucket_name = settings.AWS_BUCKET_NAME
         self.s3_region = settings.AWS_REGION
         logger.info(
             f"Initialized UploadService with bucket: {self.s3_bucket_name} in region: {self.s3_region}"
@@ -53,19 +52,7 @@ class UploadService:
                 region_name=self.s3_region,
                 endpoint_url=f"https://s3.{self.s3_region}.amazonaws.com",
             ) as s3:
-                # First check if bucket exists
-                try:
-                    logger.info(f"Checking if bucket {self.s3_bucket_name} exists...")
-                    await s3.head_bucket(Bucket=self.s3_bucket_name)
-                    logger.info("Bucket exists and is accessible")
-                except Exception as bucket_error:
-                    logger.error(f"Bucket check failed: {str(bucket_error)}")
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"S3 bucket check failed: {str(bucket_error)}",
-                    )
-
-                # Proceed with file upload
+                # PutObject can work without the ListBucket permission required by head_bucket.
                 await s3.put_object(
                     Bucket=self.s3_bucket_name,
                     Key=destination_path,
