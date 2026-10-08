@@ -39,7 +39,7 @@ from app.schemas.company_schema import CompanyCreate, CompanySettings  # noqa: E
 from app.schemas.company_role_schema import DEFAULT_COMPANY_ROLES  # noqa: E402
 from app.routes.company_route import update_company_settings  # noqa: E402
 from app.core.dependencies import ensure_company_access, get_company_id  # noqa: E402
-from app.schemas.employee_schema import EmployeePayroll, EmployeePayrollCreate, EmployeeLeaveRequestCreate, EmployeeLeaveRequestUpdate  # noqa: E402
+from app.schemas.employee_schema import EmployeePayroll, EmployeePayrollCreate, EmployeePayrollUpdate, EmployeeLeaveRequestCreate, EmployeeLeaveRequestUpdate  # noqa: E402
 from app.schemas.proforma_schema import Proforma, ProformaCreate, ProformaUpdate  # noqa: E402
 from app.schemas.purchase_order_schema import PurchaseOrder, PurchaseOrderCreate, PurchaseOrderUpdate  # noqa: E402
 from app.schemas.supplier_schema import Supplier, SupplierCreate, SupplierUpdate  # noqa: E402
@@ -721,6 +721,15 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(payroll.employee_name, "Awa Sene")
             self.assertEqual(payroll.period, {"month": 10, "year": 2026})
             self.assertEqual(len(await payroll_service.get_all_payrolls("test-company")), 1)
+            self.assertTrue(await payroll_service.update_payroll(
+                payroll_id, "test-employee", "test-company", EmployeePayrollUpdate(paidDate=None),
+            ))
+            self.assertIsNone((await payroll_service.get_payroll_by_id(
+                payroll_id, "test-employee", "test-company",
+            )).paid_date)
+            self.assertFalse(await payroll_service.update_payroll(
+                payroll_id, "test-employee", "another-company", EmployeePayrollUpdate(netSalary=1),
+            ))
 
             order_service = PurchaseOrderService()
             order_payload = PurchaseOrderCreate.model_validate({
