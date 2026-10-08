@@ -89,8 +89,8 @@ class UserService:
     
     async def create_user(self, user_data: Dict[str, Any]) -> str:
         """Create a new user and return the ID"""
+        session = get_db_session()
         try:
-            session = get_db_session()
             user = UserModel(
                 name=user_data['name'],
                 email=user_data['email'],
@@ -98,8 +98,15 @@ class UserService:
                 hashed_password=user_data['hashed_password']
             )
             session.add(user)
-            await session.commit()
-            await session.refresh(user)
+            await session.flush()
+
+            preset = DEFAULT_PLATFORM_ROLES["regular_user"]
+            role = await session.scalar(select(UserRoleModel).where(UserRoleModel.name == preset["name"]))
+            if role is None:
+                role = UserRoleModel(**preset)
+                session.add(role)
+                await session.flush()
+            session.add(UserRoleAssignmentModel(user_id=user.id, role_id=role.id))
             
             # Log sync operation
             sync_log = SyncLog(
@@ -110,9 +117,9 @@ class UserService:
             )
             session.add(sync_log)
             await session.commit()
-            
             return user.id
         except Exception as e:
+            await session.rollback()
             raise HTTPException(status_code=500, detail=f"Error creating user: {str(e)}")
     
     async def update_user(self, user_id: str, user_data: UserUpdate | Dict[str, Any]) -> User:

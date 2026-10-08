@@ -28,7 +28,8 @@ from app.routes.migration_route import router as migration_router
 from app.routes.stats_route import router as stats_router
 from app.routes.tva_rate_route import router as tva_rate_router
 
-from app.core.database import init_database, get_database_info
+from app.core.database import init_database, get_database_info, get_sessionmaker, set_db_session
+from app.services.migration_service import MigrationService
 # Import all models to ensure they're registered with Base.metadata
 import app.models  # This ensures all models are loaded and registered with Base.metadata
 
@@ -58,8 +59,14 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database on startup"""
+    """Initialize schema and repair missing role assignments before accepting requests."""
     await init_database()
+    async with get_sessionmaker()() as session:
+        set_db_session(session)
+        try:
+            await MigrationService().run_full_migration()
+        finally:
+            set_db_session(None)
 
 @app.get("/")
 @app.head("/")

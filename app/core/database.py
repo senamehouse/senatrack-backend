@@ -100,18 +100,14 @@ async def init_database():
         async with remote_async_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             await _apply_non_destructive_alters(conn, dialect="postgresql")
-        print("✅ Online mode: Remote PostgreSQL database initialized")
+        print("Online mode: Remote PostgreSQL database initialized")
         
     elif mode == "offline":
         # Offline mode: Initialize local SQLite only
         async with local_async_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             await _apply_non_destructive_alters(conn, dialect="sqlite")
-        print("✅ Offline mode: Local SQLite database initialized")
-        
-    elif mode == "offline":
-        # Already handled above; keep explicit else guard below
-        pass
+        print("Offline mode: Local SQLite database initialized")
     else:
         raise ValueError(f"Invalid DATABASE_MODE: {mode}. Must be 'online', 'offline', or 'both'")
 

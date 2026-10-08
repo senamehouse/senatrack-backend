@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 from types import SimpleNamespace
 from unittest.mock import patch
-from sqlalchemy import text
+from sqlalchemy import select, text
 from fastapi import HTTPException
 from fastapi import UploadFile
 from starlette.requests import Request
@@ -20,7 +20,7 @@ os.environ["LOCAL_DB_PATH"] = _test_db.as_posix()
 
 import app.models  # noqa: E402 - register the SQLAlchemy tables
 from app.core.database import Base, LocalAsyncSession, local_async_engine, set_db_session, _apply_non_destructive_alters  # noqa: E402
-from app.models.company_model import Company, CompanyMember as CompanyMemberModel, UserCompanyRoleModel  # noqa: E402
+from app.models.company_model import Company, CompanyMember as CompanyMemberModel, UserCompanyRoleModel, UserCompanyRoleAssignmentModel  # noqa: E402
 from app.models.employee_model import EmployeeModel  # noqa: E402
 from app.models.user_model import User  # noqa: E402
 from app.models.tva_rate_model import TvaRateModel  # noqa: E402
@@ -43,6 +43,7 @@ from app.schemas.activation_key_schema import ActivationKeyCreate, ActivationKey
 from app.services.invitation_service import InvitationService  # noqa: E402
 from app.services.user_service import UserService  # noqa: E402
 from app.services.auth_service import AuthService  # noqa: E402
+from app.services.migration_service import MigrationService  # noqa: E402
 from app.routes.user_route import update_user_as_admin, update_user_status, update_user_platform_role, update_user  # noqa: E402
 from app.schemas.user_schema import UserAdminUpdate, UserStatusUpdate, UserPlatformRoleUpdate, UserUpdate  # noqa: E402
 from app.schemas.invitation_schema import CompanyInvitationCreate, CompanyInvitation as CompanyInvitationSchema  # noqa: E402
@@ -54,6 +55,84 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
         set_db_session(None)
         await local_async_engine.dispose()
         _test_db.unlink(missing_ok=True)
+
+    async def test_role_migration_with_legacy_columns_is_idempotent(self):
+        async with local_async_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+            await connection.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(30)"))
+            await connection.execute(text("ALTER TABLE company_members ADD COLUMN role VARCHAR(30)"))
+
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            session.add_all([
+                User(id="legacy-admin", name="Admin", email="legacy-admin@example.com", hashed_password="unused"),
+                User(id="legacy-member", name="Member", email="legacy-member@example.com", hashed_password="unused"),
+                Company(id="legacy-company", name="Legacy", owner_id="legacy-admin"),
+                CompanyMemberModel(id="legacy-membership", company_id="legacy-company", user_id="legacy-member"),
+            ])
+            await session.commit()
+            await session.execute(text("UPDATE users SET role = 'admin' WHERE id = 'legacy-admin'"))
+            await session.execute(text("UPDATE company_members SET role = 'manager' WHERE id = 'legacy-membership'"))
+            await session.commit()
+
+            migration = MigrationService()
+            self.assertTrue((await migration.get_migration_status())["migration_needed"])
+            first = await migration.run_full_migration()
+            self.assertEqual(first["user_migration"]["migrated_users"], 2)
+            self.assertEqual(first["company_migration"]["migrated_members"], 2)
+            self.assertFalse((await migration.get_migration_status())["migration_needed"])
+            self.assertEqual((await migration.run_full_migration())["user_migration"]["migrated_users"], 0)
+            self.assertEqual((await migration.run_full_migration())["company_migration"]["migrated_members"], 0)
+            self.assertIn("Platform Administrator", [role.name for role in await UserService().get_user_roles("legacy-admin")])
+            self.assertIn("Propriétaire", [role.name for role in await CompanyService().get_user_company_roles("legacy-admin", "legacy-company")])
+            self.assertIn("Gestionnaire", [role.name for role in await CompanyService().get_user_company_roles("legacy-member", "legacy-company")])
+            operator = await session.scalar(select(UserCompanyRoleModel).where(
+                UserCompanyRoleModel.company_id == "legacy-company", UserCompanyRoleModel.name == "Opérateur",
+            ))
+            owner_assignment = await session.scalar(select(UserCompanyRoleAssignmentModel).where(
+                UserCompanyRoleAssignmentModel.company_id == "legacy-company",
+                UserCompanyRoleAssignmentModel.user_id == "legacy-admin",
+            ))
+            owner_assignment.role_id = operator.id
+            await session.commit()
+            self.assertTrue((await migration.get_migration_status())["migration_needed"])
+            self.assertEqual((await migration.migrate_company_member_roles())["migrated_members"], 1)
+            self.assertFalse((await migration.get_migration_status())["migration_needed"])
+
+    async def test_role_migration_on_fresh_schema(self):
+        async with local_async_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            session.add(User(id="new-user", name="New", email="new-user@example.com", hashed_password="unused"))
+            await session.commit()
+            migration = MigrationService()
+            self.assertEqual((await migration.get_migration_status())["old_system"]["users_with_old_roles"], 0)
+            self.assertEqual((await migration.migrate_user_roles())["migrated_users"], 1)
+            self.assertFalse((await migration.get_migration_status())["migration_needed"])
+            created_id = await UserService().create_user({
+                "name": "After signup", "email": "after-signup@example.com", "hashed_password": "unused",
+            })
+            self.assertIn("Regular User", [role.name for role in await UserService().get_user_roles(created_id)])
+            self.assertFalse((await migration.get_migration_status())["migration_needed"])
+
+    async def test_startup_migrates_legacy_administrator(self):
+        async with local_async_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+            await connection.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(30)"))
+        async with LocalAsyncSession() as session:
+            session.add(User(id="startup-admin", name="Admin", email="startup-admin@example.com", hashed_password="unused"))
+            await session.commit()
+            await session.execute(text("UPDATE users SET role = 'admin' WHERE id = 'startup-admin'"))
+            await session.commit()
+
+        from app.main import startup_event
+        await startup_event()
+        async with LocalAsyncSession() as session:
+            set_db_session(session)
+            roles = await UserService().get_user_roles("startup-admin")
+            self.assertIn("Platform Administrator", [role.name for role in roles])
+            self.assertFalse((await MigrationService().get_migration_status())["migration_needed"])
 
     async def test_quote_and_payroll_round_trip(self):
         async with local_async_engine.begin() as connection:
