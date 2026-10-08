@@ -1,13 +1,14 @@
 from typing import List, Optional, Dict, Any
-from sqlalchemy import select, update, delete, and_, desc
+from sqlalchemy import select, update, delete, and_, desc, func
 from fastapi import HTTPException
 from app.core.database import get_db_session
 from app.core.settings import settings
 from app.models.invitation_model import CompanyInvitation
-from app.models.company_model import Company
+from app.models.company_model import Company, CompanyMember, UserCompanyRoleModel, UserCompanyRoleAssignmentModel
 from app.models.user_model import User
 from app.schemas.invitation_schema import (
-    CompanyInvitationCreate, CompanyInvitationUpdate, InvitationStats, InvitationResponse, InvitationCancelResponse
+    CompanyInvitationCreate, CompanyInvitationUpdate, CompanyInvitation as CompanyInvitationSchema,
+    InvitationStats, InvitationResponse, InvitationCancelResponse
 )
 from datetime import datetime, timedelta
 import secrets
@@ -16,13 +17,15 @@ import os
 from app.services.email_service import email_service
 from app.utils.email_templates import get_app_config
 from app.utils.activity_logger import audit, ActivityActor
+from app.schemas.company_role_schema import DEFAULT_COMPANY_ROLES
 
 class InvitationService:
     """Service for company invitation-related operations"""
     
     def generate_invitation_token(self) -> str:
         """Generate a unique invitation token"""
-        return ''.join(secrets.choices(string.ascii_letters + string.digits, k=32))
+        alphabet = string.ascii_letters + string.digits
+        return ''.join(secrets.choice(alphabet) for _ in range(32))
     
     @audit(
         action="CREATE",
@@ -120,7 +123,7 @@ class InvitationService:
             result = await session.execute(
                 select(CompanyInvitation).where(
                     and_(
-                        CompanyInvitation.email == email,
+                        func.lower(CompanyInvitation.email) == email.lower(),
                         CompanyInvitation.status == "pending",
                         CompanyInvitation.expires_at > datetime.utcnow()
                     )
@@ -182,7 +185,7 @@ class InvitationService:
         entity_id=lambda result, _a, _kw: result.invitation.id if (hasattr(result, 'invitation') and result.invitation) else None,
         extra=lambda _r, _a, kw: {"userId": kw["user_id"], "token": kw["token"]},
     )
-    async def accept_invitation(self, token: str, user_id: str, actor: ActivityActor | None = None) -> InvitationResponse:
+    async def accept_invitation(self, token: str, user_id: str, user_email: str, actor: ActivityActor | None = None) -> InvitationResponse:
         """Accept an invitation and return response"""
         try:
             session = get_db_session()
@@ -194,6 +197,8 @@ class InvitationService:
             
             if not invitation:
                 raise HTTPException(status_code=404, detail="Invitation not found")
+            if invitation.email.casefold() != user_email.casefold():
+                raise HTTPException(status_code=403, detail="Invitation belongs to another email")
             
             if invitation.status != "pending":
                 raise HTTPException(status_code=400, detail="Invitation is not pending")
@@ -209,15 +214,54 @@ class InvitationService:
                 await session.commit()
                 raise HTTPException(status_code=400, detail="Invitation has expired")
             
-            # Update invitation status
-            await session.execute(
-                update(CompanyInvitation).where(CompanyInvitation.id == invitation.id).values(
-                    status="accepted",
-                    accepted_at=datetime.utcnow(),
-                    accepted_by=user_id,
-                    updated_at=datetime.utcnow()
+            now = datetime.utcnow()
+            member = await session.scalar(select(CompanyMember).where(
+                CompanyMember.company_id == invitation.company_id,
+                CompanyMember.user_id == user_id,
+            ))
+            if member is None:
+                member = CompanyMember(
+                    company_id=invitation.company_id, user_id=user_id,
+                    invited_by=invitation.invited_by, invited_at=invitation.invited_at,
+                    joined_at=now, is_active=True,
                 )
-            )
+                session.add(member)
+            else:
+                member.is_active = True
+                member.joined_at = now
+
+            preset = DEFAULT_COMPANY_ROLES.get(invitation.role)
+            if preset is None:
+                raise HTTPException(status_code=400, detail="Invalid invitation role")
+            role = await session.scalar(select(UserCompanyRoleModel).where(
+                UserCompanyRoleModel.company_id == invitation.company_id,
+                UserCompanyRoleModel.name == preset["name"],
+            ))
+            if role is None:
+                role = UserCompanyRoleModel(
+                    company_id=invitation.company_id,
+                    name=preset["name"], description=preset["description"],
+                    permissions=preset["permissions"], is_preset=True, is_system=True,
+                )
+                session.add(role)
+                await session.flush()
+            existing_assignment = await session.scalar(select(UserCompanyRoleAssignmentModel).where(
+                UserCompanyRoleAssignmentModel.company_id == invitation.company_id,
+                UserCompanyRoleAssignmentModel.user_id == user_id,
+                UserCompanyRoleAssignmentModel.role_id == role.id,
+            ))
+            if existing_assignment is None:
+                session.add(UserCompanyRoleAssignmentModel(
+                    company_id=invitation.company_id, user_id=user_id,
+                    role_id=role.id, assigned_by=invitation.invited_by,
+                ))
+            user = await session.get(User, user_id)
+            if user is not None:
+                user.current_company_id = invitation.company_id
+            invitation.status = "accepted"
+            invitation.accepted_at = now
+            invitation.accepted_by = user_id
+            invitation.updated_at = now
             await session.commit()
             
             # Get updated invitation
@@ -229,7 +273,7 @@ class InvitationService:
             return InvitationResponse(
                 success=True,
                 message="Invitation accepted successfully",
-                invitation=updated_invitation
+                invitation=CompanyInvitationSchema.model_validate(updated_invitation.to_dict())
             )
         except HTTPException:
             raise
@@ -242,7 +286,7 @@ class InvitationService:
         details=lambda _r, _a, kw: f"Invitation refusée (token {kw['token']})",
         entity_id=lambda _r, _a, kw: kw["token"],
     )
-    async def decline_invitation(self, token: str, actor: ActivityActor | None = None) -> InvitationResponse:
+    async def decline_invitation(self, token: str, user_email: str, actor: ActivityActor | None = None) -> InvitationResponse:
         """Decline an invitation and return response"""
         try:
             session = get_db_session()
@@ -254,6 +298,8 @@ class InvitationService:
             
             if not invitation:
                 raise HTTPException(status_code=404, detail="Invitation not found")
+            if invitation.email.casefold() != user_email.casefold():
+                raise HTTPException(status_code=403, detail="Invitation belongs to another email")
             
             if invitation.status != "pending":
                 raise HTTPException(status_code=400, detail="Invitation is not pending")
@@ -346,7 +392,7 @@ class InvitationService:
             if not app_url:
                 app_url = config["app_url"]
             
-            invitation_url = f"{app_url}/invitations?id={invitation.id}"
+            invitation_url = f"{app_url.rstrip('/')}/mon-espace/rejoindre?token={invitation.token}"
             
             # Role labels mapping
             role_labels = {

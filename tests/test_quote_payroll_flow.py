@@ -38,6 +38,9 @@ from app.services.company_service import CompanyService  # noqa: E402
 from app.services.file_service import FileService  # noqa: E402
 from app.services.activation_key_service import ActivationKeyService  # noqa: E402
 from app.schemas.activation_key_schema import ActivationKeyCreate, ActivationKeyUsageResponse  # noqa: E402
+from app.services.invitation_service import InvitationService  # noqa: E402
+from app.schemas.invitation_schema import CompanyInvitationCreate, CompanyInvitation as CompanyInvitationSchema  # noqa: E402
+from app.routes.invitation_route import create_invitation as create_invitation_route, get_pending_invitations as pending_invitations_route  # noqa: E402
 
 
 class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
@@ -214,6 +217,25 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             self.assertFalse((await key_service.use_activation_key(key.key, "other-company", "test-user"))["success"])
             await session.refresh(await session.get(Company, "test-company"))
             self.assertEqual((await session.get(Company, "test-company")).subscription["plan"], "premium")
+
+            session.add(User(id="invitee", name="Invitee", email="invitee@example.com", hashed_password="unused"))
+            await session.commit()
+            invitation_service = InvitationService()
+            invitation = await create_invitation_route(CompanyInvitationCreate(
+                companyId="test-company", email="invitee@example.com", role="operator", invitedBy="outsider",
+            ), session, SimpleNamespace(id="test-user", email="tester@example.com", name="Tester", platform_permissions=[]))
+            self.assertEqual(invitation.invited_by, "test-user")
+            self.assertEqual(CompanyInvitationSchema.model_validate(invitation).email, "invitee@example.com")
+            with self.assertRaises(HTTPException) as denied:
+                await pending_invitations_route("invitee@example.com", session, SimpleNamespace(email="wrong@example.com"))
+            self.assertEqual(denied.exception.status_code, 403)
+            with self.assertRaises(HTTPException) as denied:
+                await invitation_service.accept_invitation(invitation.token, "invitee", "wrong@example.invalid")
+            self.assertEqual(denied.exception.status_code, 403)
+            accepted = await invitation_service.accept_invitation(invitation.token, "invitee", "invitee@example.com")
+            self.assertTrue(accepted.success)
+            await ensure_company_access("test-company", SimpleNamespace(id="invitee", platform_permissions=[]), session)
+            self.assertEqual([role.name for role in await company_service.get_user_company_roles("invitee", "test-company")], ["Opérateur"])
 
 if __name__ == "__main__":
     unittest.main()

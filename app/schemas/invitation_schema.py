@@ -1,5 +1,5 @@
 from app.utils.casing import BaseCamelModel
-from pydantic import Field, EmailStr
+from pydantic import Field, EmailStr, ConfigDict
 from typing import Optional
 from datetime import datetime
 
@@ -10,7 +10,7 @@ class CompanyInvitationBase(BaseCamelModel):
     company_id: str = Field(..., alias="companyId")
     email: EmailStr
     role: str = Field(..., pattern="^(admin|manager|operator|viewer)$")
-    invited_by: int = Field(..., alias="invitedBy")
+    invited_by: str = Field(..., alias="invitedBy")
     message: Optional[str] = None
     token: str = Field(..., min_length=1, max_length=255)
     status: str = Field(default="pending", pattern="^(pending|accepted|declined|expired)$")
@@ -21,7 +21,7 @@ class CompanyInvitationCreate(BaseCamelModel):
     company_id: str = Field(..., alias="companyId")
     email: EmailStr
     role: str = Field(..., pattern="^(admin|manager|operator|viewer)$")
-    invited_by: int = Field(..., alias="invitedBy")
+    invited_by: Optional[str] = Field(None, alias="invitedBy")
     message: Optional[str] = None
 
 class CompanyInvitationUpdate(BaseCamelModel):
@@ -32,12 +32,13 @@ class CompanyInvitationUpdate(BaseCamelModel):
 
 class CompanyInvitation(CompanyInvitationBase):
     """Complete company invitation schema"""
+    model_config = ConfigDict(from_attributes=True)
     
     id: str
     invited_at: datetime = Field(..., alias="invitedAt")
     expires_at: datetime = Field(..., alias="expiresAt")
     accepted_at: Optional[datetime] = Field(None, alias="acceptedAt")
-    accepted_by: Optional[int] = Field(None, alias="acceptedBy")
+    accepted_by: Optional[str] = Field(None, alias="acceptedBy")
     declined_at: Optional[datetime] = Field(None, alias="declinedAt")
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: Optional[datetime] = Field(None, alias="updatedAt")
