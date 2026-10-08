@@ -23,9 +23,11 @@ from app.routes.company_route import update_company_settings  # noqa: E402
 from app.schemas.employee_schema import EmployeePayroll, EmployeePayrollCreate  # noqa: E402
 from app.schemas.proforma_schema import Proforma, ProformaCreate, ProformaUpdate  # noqa: E402
 from app.schemas.purchase_order_schema import PurchaseOrder, PurchaseOrderCreate, PurchaseOrderUpdate  # noqa: E402
+from app.schemas.supplier_schema import Supplier, SupplierCreate, SupplierUpdate  # noqa: E402
 from app.services.employee_service import EmployeeService  # noqa: E402
 from app.services.proforma_service import ProformaService  # noqa: E402
 from app.services.purchase_order_service import PurchaseOrderService  # noqa: E402
+from app.services.supplier_service import SupplierService  # noqa: E402
 
 
 class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
@@ -38,9 +40,12 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
         async with local_async_engine.begin() as connection:
             # Simulate a deployed table from before the additive details migration.
             await connection.execute(text("CREATE TABLE purchase_orders (id VARCHAR(20) PRIMARY KEY, company_id VARCHAR(64), order_number VARCHAR(100) NOT NULL, supplier_id VARCHAR(64), status VARCHAR(20) NOT NULL, total_amount FLOAT NOT NULL, created_at DATETIME, updated_at DATETIME)"))
+            await connection.execute(text("CREATE TABLE suppliers (id VARCHAR(20) PRIMARY KEY, company_id VARCHAR(64), name VARCHAR(255) NOT NULL, email VARCHAR(255), phone VARCHAR(20), address TEXT, is_active BOOLEAN, created_at DATETIME, updated_at DATETIME)"))
             await connection.run_sync(Base.metadata.create_all)
             await _apply_non_destructive_alters(connection, dialect="sqlite")
             columns = await connection.execute(text("PRAGMA table_info(purchase_orders)"))
+            self.assertIn("details", {column[1] for column in columns})
+            columns = await connection.execute(text("PRAGMA table_info(suppliers)"))
             self.assertIn("details", {column[1] for column in columns})
 
         async with LocalAsyncSession() as session:
@@ -103,6 +108,21 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             updated_order = await order_service.get_by_id(order_id, "test-company")
             self.assertEqual(updated_order.notes, "Livrer vite")
             self.assertEqual(updated_order.total_amount, 55)
+
+            supplier_service = SupplierService()
+            supplier_id = await supplier_service.create_supplier("test-company", SupplierCreate.model_validate({
+                "name": "Fournisseur test", "contactPerson": "Fatou", "paymentTerms": "net_15",
+                "currency": "XOF", "city": "Dakar", "notes": "Livraison rapide",
+            }))
+            supplier = await supplier_service.get_supplier_by_id(supplier_id, "test-company")
+            self.assertIsInstance(supplier, Supplier)
+            self.assertEqual(supplier.contact_person, "Fatou")
+            self.assertEqual(supplier.payment_terms, "net_15")
+            self.assertTrue(supplier.supplier_code.startswith("SUP-"))
+            await supplier_service.update_supplier(supplier_id, "test-company", SupplierUpdate(city="Thiès", isActive=False))
+            self.assertEqual((await supplier_service.get_supplier_by_id(supplier_id, "test-company")).city, "Thiès")
+            self.assertFalse((await supplier_service.get_all_suppliers("test-company"))[0].is_active)
+            self.assertIsNone(await supplier_service.get_supplier_by_id(supplier_id, "other-company"))
 
             session.add(TvaRateModel(id="test-rate", company_id="test-company", name="TVA", rate=18, is_default=True, is_active=True))
             await session.commit()

@@ -6,6 +6,7 @@ from app.core.database import get_db_session
 from app.models.supplier_model import Supplier as SupplierModel
 from app.schemas.supplier_schema import Supplier as SupplierSchema, SupplierCreate, SupplierUpdate
 from app.utils.activity_logger import audit, ActivityActor
+from app.utils.id_generator import generate_id
 
 
 class SupplierService:
@@ -16,7 +17,6 @@ class SupplierService:
                 select(SupplierModel)
                 .where(
                     SupplierModel.company_id == company_id,
-                    SupplierModel.is_active == True,
                 )
                 .order_by(SupplierModel.created_at.desc())
             )
@@ -32,7 +32,6 @@ class SupplierService:
                 select(SupplierModel).where(
                     SupplierModel.id == supplier_id,
                     SupplierModel.company_id == company_id,
-                    SupplierModel.is_active == True,
                 )
             )
             supplier = result.scalar_one_or_none()
@@ -50,12 +49,18 @@ class SupplierService:
     async def create_supplier(self, company_id: str, supplier_data: SupplierCreate, actor: ActivityActor | None = None) -> str:
         try:
             session = get_db_session()
+            supplier_id = generate_id()
             supplier = SupplierModel(
+                id=supplier_id,
                 company_id=company_id,
                 name=supplier_data.name,
                 email=supplier_data.email,
                 phone=supplier_data.phone,
                 address=supplier_data.address,
+                is_active=supplier_data.is_active,
+                created_at=datetime.utcnow(),
+                details={**supplier_data.model_dump(mode="json", by_alias=True, exclude={"name", "email", "phone", "address", "is_active"}),
+                         "supplierCode": f"SUP-{supplier_id[:8].upper()}"},
             )
             session.add(supplier)
             await session.commit()
@@ -83,16 +88,12 @@ class SupplierService:
             supplier = result.scalar_one_or_none()
             if not supplier:
                 return False
-            if supplier_data.name is not None:
-                supplier.name = supplier_data.name
-            if supplier_data.email is not None:
-                supplier.email = supplier_data.email
-            if supplier_data.phone is not None:
-                supplier.phone = supplier_data.phone
-            if supplier_data.address is not None:
-                supplier.address = supplier_data.address
-            if supplier_data.is_active is not None:
-                supplier.is_active = supplier_data.is_active
+            changes = supplier_data.model_dump(mode="json", by_alias=True, exclude_unset=True)
+            core_fields = {"name": "name", "email": "email", "phone": "phone", "address": "address", "isActive": "is_active"}
+            for field, attribute in core_fields.items():
+                if field in changes and (field != "name" or changes[field] is not None):
+                    setattr(supplier, attribute, changes.pop(field))
+            supplier.details = {**(supplier.details or {}), **changes}
             supplier.updated_at = datetime.now()
             await session.commit()
             return True

@@ -35,7 +35,7 @@ async def get_supplier(
     return supplier
 
 
-@router.post("/", response_model=dict)
+@router.post("/", response_model=Supplier)
 async def create_supplier(
     payload: SupplierCreate,
     session: AsyncSession = Depends(get_async_db),
@@ -43,10 +43,10 @@ async def create_supplier(
     company_id: str = Depends(get_company_id)
 ):
     supplier_id = await service.create_supplier(company_id=company_id, supplier_data=payload, actor=ActivityActor.from_user(current_user))
-    return {"message": "Supplier created", "supplier_id": supplier_id}
+    return await service.get_supplier_by_id(supplier_id, company_id)
 
 
-@router.put("/{supplier_id}", response_model=dict)
+@router.put("/{supplier_id}", response_model=Supplier)
 async def update_supplier(
     supplier_id: str,
     payload: SupplierUpdate,
@@ -57,7 +57,7 @@ async def update_supplier(
     ok = await service.update_supplier(supplier_id=supplier_id, company_id=company_id, supplier_data=payload, actor=ActivityActor.from_user(current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Supplier not found")
-    return {"message": "Supplier updated"}
+    return await service.get_supplier_by_id(supplier_id, company_id)
 
 
 @router.delete("/{supplier_id}", response_model=dict)

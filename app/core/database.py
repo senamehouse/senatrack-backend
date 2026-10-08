@@ -197,10 +197,14 @@ async def _apply_non_destructive_alters(conn, dialect: str):
                 await conn.execute(text(f"ALTER TABLE proformas ADD COLUMN {column} FLOAT DEFAULT 0"))
     if dialect == "postgresql":
         await conn.execute(text("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS details JSONB"))
+        await conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS details JSONB"))
     else:
         columns = await conn.execute(text("PRAGMA table_info(purchase_orders)"))
         if "details" not in {row[1] for row in columns}:
             await conn.execute(text("ALTER TABLE purchase_orders ADD COLUMN details JSON"))
+        columns = await conn.execute(text("PRAGMA table_info(suppliers)"))
+        if "details" not in {row[1] for row in columns}:
+            await conn.execute(text("ALTER TABLE suppliers ADD COLUMN details JSON"))
     # Tables to alter (must match models): simple list approach
     tables = [
         "users","product_categories","units","products","suppliers","clients","services",
