@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict, Any
 from sqlalchemy import select, update, delete, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
 from app.core.database import get_db_session
 from app.models.proforma_model import Proforma
@@ -15,27 +16,41 @@ class ProformaService:
 
     async def create_proforma(self, proforma_data: ProformaCreate, company_id: str, created_by: str) -> Proforma:
         """Create a new proforma"""
+        session = get_db_session()
+        auto_number = not proforma_data.number or not proforma_data.number.strip()
         try:
-            session = get_db_session()
-            # Always generate proforma number if not provided or empty
-            if not proforma_data.number or not proforma_data.number.strip():
-                proforma_data.number = await self.generate_proforma_number(company_id)
+            for attempt in range(3):
+                number = await self.generate_proforma_number(company_id) if auto_number else proforma_data.number
+                proforma_dict = proforma_data.model_dump(exclude={"objet"})
+                proforma_dict["number"] = number
+                proforma_dict["client"] = proforma_data.client.model_dump(by_alias=True)
+                proforma_dict["items"] = [item.model_dump(by_alias=True) for item in proforma_data.items]
+                proforma_dict.update({"company_id": company_id, "created_by": created_by,
+                                      "notes": proforma_data.objet, "created_at": datetime.utcnow(),
+                                      "updated_at": datetime.utcnow()})
 
-            proforma_dict = proforma_data.model_dump(exclude={"objet"})
-            proforma_dict["client"] = proforma_data.client.model_dump(by_alias=True)
-            proforma_dict["items"] = [item.model_dump(by_alias=True) for item in proforma_data.items]
-            proforma_dict.update({"company_id": company_id, "created_by": created_by,
-                                  "notes": proforma_data.objet, "created_at": datetime.utcnow(),
-                                  "updated_at": datetime.utcnow()})
+                proforma = Proforma(**proforma_dict)
+                session.add(proforma)
+                try:
+                    await session.commit()
+                except IntegrityError:
+                    await session.rollback()
+                    existing_number = await session.scalar(
+                        select(Proforma.id).where(Proforma.number == number)
+                    )
+                    if existing_number:
+                        if auto_number and attempt < 2:
+                            continue
+                        raise HTTPException(status_code=409, detail="Ce numéro de devis existe déjà.")
+                    raise
 
-            proforma = Proforma(**proforma_dict)
-            session.add(proforma)
-            await session.commit()
-            await session.refresh(proforma)
-
-            return proforma.to_dict()
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error creating proforma: {str(e)}")
+                return proforma.to_dict()
+            raise HTTPException(status_code=409, detail="Impossible d'attribuer un numéro de devis unique. Réessayez.")
+        except HTTPException:
+            raise
+        except Exception:
+            await session.rollback()
+            raise HTTPException(status_code=500, detail="Impossible d'enregistrer le devis. Réessayez.")
 
     async def get_proforma_by_id(self, proforma_id: str, company_id: str) -> Optional[Proforma]:
         """Get a proforma by ID"""

@@ -769,6 +769,35 @@ class QuotePayrollFlowTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(await quote_service.get_company_proformas("test-company")), 1)
             self.assertIsNone(await quote_service.get_proforma_by_id(saved_quote.id, "another-company"))
 
+            with patch.object(quote_service, "generate_proforma_number", new=AsyncMock(
+                side_effect=[saved_quote.number, "PRO-2026-9999"],
+            )):
+                retried_quote = await quote_service.create_proforma(
+                    ProformaCreate.model_validate({
+                        "date": "2026-10-08T11:00:00",
+                        "client": {"name": "Second client"},
+                        "items": [{"description": "Service", "quantity": 1, "sellPrice": 50, "total": 50}],
+                        "subtotal": 50, "total": 50,
+                    }),
+                    company_id="test-company", created_by="test-user",
+                )
+            self.assertEqual(retried_quote["number"], "PRO-2026-9999")
+            self.assertEqual(len(await quote_service.get_company_proformas("test-company")), 2)
+
+            with self.assertRaises(HTTPException) as duplicate_number:
+                await quote_service.create_proforma(
+                    ProformaCreate.model_validate({
+                        "number": saved_quote.number,
+                        "date": "2026-10-08T12:00:00",
+                        "client": {"name": "Third client"},
+                        "items": [{"description": "Service", "quantity": 1, "sellPrice": 25, "total": 25}],
+                        "subtotal": 25, "total": 25,
+                    }),
+                    company_id="test-company", created_by="test-user",
+                )
+            self.assertEqual(duplicate_number.exception.status_code, 409)
+            self.assertEqual(len(await quote_service.get_company_proformas("test-company")), 2)
+
             updated = await quote_service.update_proforma(saved_quote.id, "test-company", ProformaUpdate(discount=10, total=45))
             self.assertEqual(updated["discount"], 10)
             self.assertEqual(updated["total"], 45)
